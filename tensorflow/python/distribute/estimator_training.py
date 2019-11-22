@@ -213,6 +213,7 @@ def train_and_evaluate(estimator, train_spec, eval_spec, executor_cls):
   Raises:
     ValueError: if `distribute_coordinator_mode` is None in RunConfig.
   """
+  logging.info('sahil tyagi inside the train_and_evaluate function call')
   run_config = estimator.config
   if not run_config._distribute_coordinator_mode:  # pylint: disable=protected-access
     raise ValueError(

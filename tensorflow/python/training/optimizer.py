@@ -21,6 +21,8 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import os
+import json
 
 import six
 
@@ -28,6 +30,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -520,6 +523,10 @@ class Optimizer(
 
   @staticmethod
   def _scale_loss(loss_value):
+    logging.info('@sahiltyagi4 inside the scale loss function called fom compute_gradients function in optimize.py')
+    tf_config = json.loads(os.environ["TF_CONFIG"])
+    task_type = tf_config["task"]["type"]
+    logging.info('@sahiltyagi4 TF_CONFIG task-type called from _scale_loss function %s', task_type)
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
     if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
       num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
