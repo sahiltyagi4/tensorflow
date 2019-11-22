@@ -561,7 +561,10 @@ class Optimizer(
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
-
+    logging.info('@sahiltyagi4 inside the _apply_gradients function called in optimize.py')
+    tf_config = json.loads(os.environ["TF_CONFIG"])
+    task_type = tf_config["task"]["type"]
+    logging.info('@sahiltyagi4 TF_CONFIG task-type called from _apply_gradient %s', task_type)
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
