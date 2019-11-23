@@ -564,7 +564,18 @@ class Optimizer(
     logging.info('@sahiltyagi4 inside the _apply_gradients function called in optimize.py')
     tf_config = json.loads(os.environ["TF_CONFIG"])
     task_type = tf_config["task"]["type"]
+    task_id = tf_config["task"]["index"]
     logging.info('@sahiltyagi4 TF_CONFIG task-type called from _apply_gradient %s', task_type)
+    batch_size_list = tf_config["batch_size_list"]
+    if task_type == 'master':
+      logging.info('@sahiltyagi ......master node value of per-node batch size %d', batch_size_list[1])
+    if task_type == 'worker':
+      if task_id == 0:
+        logging.info('@sahiltyagi at worker node-0')
+        logging.info('@sahiltyagi ......worker node value of per-node batch size %d', batch_size_list[2])
+      elif task_id == 1:
+        logging.info('@sahiltyagi at worker node-1')
+        logging.info('@sahiltyagi ......worker node value of per-node batch size %d', batch_size_list[3])
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
