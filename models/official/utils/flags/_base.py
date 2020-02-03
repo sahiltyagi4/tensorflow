@@ -27,7 +27,7 @@ from official.utils.logs import hooks_helper
 
 def define_base(data_dir=True, model_dir=True, clean=True, train_epochs=True,
                 epochs_between_evals=True, stop_threshold=True, batch_size=True,
-                num_gpu=True, hooks=True, export_dir=True):
+                num_gpu=True, hooks=True, warm_start=True, export_dir=True):
   """Register base flags.
 
   Args:
@@ -58,6 +58,12 @@ def define_base(data_dir=True, model_dir=True, clean=True, train_epochs=True,
         name="model_dir", short_name="md", default="/tmp",
         help=help_wrap("The location of the model checkpoint files."))
     key_flags.append("model_dir")
+
+  if warm_start:
+    flags.DEFINE_boolean(
+      name="warm_start", short_name="ws", default=False,
+      help=help_wrap("If set True, trainable variables are picked up from model_dir"))
+    key_flags.append("warm_start")
 
   if clean:
     flags.DEFINE_boolean(

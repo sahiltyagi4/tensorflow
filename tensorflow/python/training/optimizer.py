@@ -23,8 +23,10 @@ from __future__ import print_function
 import abc
 import os
 import json
+import time
 
 import six
+import tensorfow as tf
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -419,6 +421,7 @@ class Optimizer(
                         gate_gradients=GATE_OP,
                         aggregation_method=None,
                         colocate_gradients_with_ops=False,
+                        worker_name=None,
                         grad_loss=None):
     """Compute gradients of `loss` for the variables in `var_list`.
 
@@ -458,6 +461,7 @@ class Optimizer(
     and `colocate_gradients_with_ops` are ignored.
     @end_compatibility
     """
+    starttime = time.time()
     if callable(loss):
       with backprop.GradientTape() as tape:
         if var_list is not None:
@@ -519,6 +523,9 @@ class Optimizer(
     self._assert_valid_dtypes(
         [v for g, v in grads_and_vars
          if g is not None and v.dtype != dtypes.resource])
+
+    endtime = time.time()
+    logging.info('@sahiltyagi COMPUTE GRADIENT on given worker is ' + str(endtime - starttime) + ' with starttime ' + str(starttime) + ' and endtime ' + str(endtime) + ' and global step ' + str(tf.train.get_or_create_global_step()) + ' and worker_name is ' + worker_name)
     return grads_and_vars
 
   @staticmethod

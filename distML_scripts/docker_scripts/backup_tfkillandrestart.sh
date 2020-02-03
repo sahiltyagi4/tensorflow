@@ -127,9 +127,11 @@ do
 	echo "cpus alloted to task: "${cpucoresalloc[$(($i-1))]}
 	echo "memory allocated to container: "${memalloc[$(($i-1))]}
 	echo "model directory is $job_dir"
-	docker run -it -w /resnet-cifar10 -v /extra/tensorflow:/resnet-cifar10 -v "$job_dir":/root \
+	docker run -it -w /resnet-cifar10 -v /home/styagi/prateeks/tensorflow:/resnet-cifar10 -v "$job_dir":/root \
 	--env TF_CONFIG="$tf_config" --name $service_id --cpus ${cpucoresalloc[$(($i-1))]} -m ${memalloc[$(($i-1))]} --net $network --ip ${iplist[$(($i-1))]} \
 	-d tflogitertime2:v1 /bin/bash
+
+	sleep 5
 done
 
 docker stats &>> $log_dir$run_number/"dockerstats.txt" &
@@ -164,7 +166,7 @@ do
 			--data-dir=/resnet-cifar10/models/tutorials/image/cifar10_estimator/cifar-10-data --job-dir="/root" --num-gpus=0 \
 			--train-steps='${stepsequence[0]}''  &>> $log_dir$run_number$service_id/"stepslogs.txt" &
 
-		sleep 10
+		sleep 5
 	elif [ "$sync_mode" == "true" ]
 	then
 		echo "ALL EXCEPT LAST running in BSP mode as sync is set to true.."
@@ -172,7 +174,7 @@ do
         	--data-dir=/resnet-cifar10/models/tutorials/image/cifar10_estimator/cifar-10-data --job-dir="/root" --num-gpus=0 \
             --train-steps='${stepsequence[0]}' --sync'  &>> $log_dir$run_number$service_id/"stepslogs.txt" &
 
-        sleep 10
+        sleep 5
 	fi
 done
 
@@ -277,9 +279,11 @@ do
 		echo "cpus alloted to task: "${cpucoresalloc[$(($i-1))]}
 		echo "memory allocated to container: "${memalloc[$(($i-1))]}
 		echo "model directory is $job_dir"
-		docker run -it -w /resnet-cifar10 -v /extra/tensorflow:/resnet-cifar10 -v "$job_dir":/root \
+		docker run -it -w /resnet-cifar10 -v /home/styagi/prateeks/tensorflow:/resnet-cifar10 -v "$job_dir":/root \
 		--env TF_CONFIG="$tf_config" --name $service_id --cpus ${cpucoresalloc[$(($i-1))]} -m ${memalloc[$(($i-1))]} --net $network --ip ${iplist[$(($i-1))]} \
 		-d tflogitertime2:v1 /bin/bash
+
+		sleep 5
 	done
 
 	echo "logging start time in re-run loop..."
@@ -306,7 +310,7 @@ do
 				--data-dir=/resnet-cifar10/models/tutorials/image/cifar10_estimator/cifar-10-data --job-dir="/root" --num-gpus=0 \
 				--train-steps='${stepsequence[$z]}' --warm-start='true''  &>> $log_dir$run_number$service_id/"stepslogs.txt" &
 
-			sleep 10
+			sleep 5
 		elif [ "$sync_mode" == "true" ]
 		then
 			echo "ALL EXCEPT LAST running in BSP mode as sync is set to true.."
@@ -314,7 +318,7 @@ do
             	--data-dir=/resnet-cifar10/models/tutorials/image/cifar10_estimator/cifar-10-data --job-dir="/root" --num-gpus=0 \
                 --train-steps='${stepsequence[$z]}' --sync --warm-start='true''  &>> $log_dir$run_number$service_id/"stepslogs.txt" &
 
-            sleep 10
+            sleep 5
 		fi
 	done
 

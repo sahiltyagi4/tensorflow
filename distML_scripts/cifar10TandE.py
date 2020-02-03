@@ -372,7 +372,7 @@ def main(job_dir, data_dir, num_gpus, variable_strategy,
 
   hparams=tf.contrib.training.HParams(is_chief=run_config.is_chief, **hparams)
   warm_start = hparams.warm_start
-  tf.logging.info('value of warm-start is: ' + str(warm_start))
+  tf.logging.info('##################### value of warm-start is: ' + str(warm_start))
   tf.logging.info("##################### is the run_config chief: " + str(run_config.is_chief))
   tf.logging.info("##################### hparams.train_batch_size " + str(hparams.train_batch_size))
   tf.logging.info("##################### hparams.eval_batch_size " + str(hparams.eval_batch_size))
@@ -417,11 +417,12 @@ def main(job_dir, data_dir, num_gpus, variable_strategy,
 
   if warm_start == 'true':
     tf.logging.info('warm-start is TRUE....')
-    classifier = tf.estimator.Estimator(model_fn=get_model_fn(num_gpus,variable_strategy,run_config.num_worker_replicas or 1, gradient_scale),config=run_config,params=hparams, warm_start_from=job_dir)
+    warmstart_obj = tf.estimator.WarmStartSettings(ckpt_to_initialize_from=job_dir, vars_to_warm_start=[".*"])
+    classifier = tf.estimator.Estimator(model_fn=get_model_fn(num_gpus,variable_strategy,run_config.num_worker_replicas or 1, gradient_scale),config=run_config,params=hparams, warm_start_from=warmstart_obj)
   elif warm_start == 'false':
     tf.logging.info('warm-start set to FALSE!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!')
     classifier = tf.estimator.Estimator(model_fn=get_model_fn(num_gpus,variable_strategy,run_config.num_worker_replicas or 1, gradient_scale),config=run_config,params=hparams)
-  acc_threshold = tf.estimator.experimental.stop_if_higher_hook(estimator=classifier, metric_name="accuracy", threshold=0.92)
+  acc_threshold = tf.estimator.experimental.stop_if_higher_hook(estimator=classifier, metric_name="accuracy", threshold=0.95)
   train_spec = tf.estimator.TrainSpec(input_fn=train_input_fn, hooks= [acc_threshold], max_steps=train_steps)
   eval_spec = tf.estimator.EvalSpec(input_fn=eval_input_fn, steps=eval_steps)
   tf.estimator.train_and_evaluate(classifier, train_spec, eval_spec)
