@@ -26,7 +26,7 @@ import json
 import time
 
 import six
-import tensorfow as tf
+import tensorflow as tf
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
