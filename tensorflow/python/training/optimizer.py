@@ -401,6 +401,7 @@ class Optimizer(
     execution is enabled.
     @end_compatibility
     """
+    strt = time.time()
     grads_and_vars = self.compute_gradients(
         loss, var_list=var_list, gate_gradients=gate_gradients,
         aggregation_method=aggregation_method,
@@ -413,6 +414,9 @@ class Optimizer(
           "No gradients provided for any variable, check your graph for ops"
           " that do not support gradients, between variables %s and loss %s." %
           ([str(v) for _, v in grads_and_vars], loss))
+
+    end = time.time()
+    logging.info('@sahiltyagi INSIDE minimize fxn call starttime ' + str(strt) + ' and endtime ' + str(end))
 
     return self.apply_gradients(grads_and_vars, global_step=global_step,
                                 name=name)
