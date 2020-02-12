@@ -467,6 +467,8 @@ class Optimizer(
     """
     #starttime = time.time()
     if callable(loss):
+      strt = tf.Variable(tf.zeros([]), tf.float32)
+      strt = tf.assign(strt, time.time(), name='grad_starttime')
       with backprop.GradientTape() as tape:
         if var_list is not None:
           tape.watch(var_list)
@@ -482,15 +484,8 @@ class Optimizer(
         var_list = tape.watched_variables()
       # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
       # to be executed.
-      glob_step = 'pqr'
       with ops.control_dependencies([loss_value]):
-        #sess = tf.Session()
-        #glob_step = sess.run(tf.train.get_or_create_global_step())
-        #sess.close()
-        s1 = time.time()
         grads = tape.gradient(loss_value, var_list, grad_loss)
-        e1 = time.time()
-        logging.info('@sahiltyagi GRADIENT TAPE latency on worker node ' + str(e1 - s1) + ' with starttime ' + str(s1) + ' and endtime ' + str(e1) + ' and global step ' + str(glob_step))
       return list(zip(grads, var_list))
 
     # Non-callable/Tensor loss case
@@ -523,14 +518,11 @@ class Optimizer(
     if not var_list:
       raise ValueError("No variables to optimize.")
     var_refs = [p.target() for p in processors]
-    s2 = time.time()
     grads = gradients.gradients(
         loss, var_refs, grad_ys=grad_loss,
         gate_gradients=(gate_gradients == Optimizer.GATE_OP),
         aggregation_method=aggregation_method,
         colocate_gradients_with_ops=colocate_gradients_with_ops)
-    e2 = time.time()
-    logging.info('@sahiltyagi GRADIENTS GRADIENTS CALL ' + str(e2 - s2) + ' with starttime ' + str(s2) + ' and endtime ' + str(e2))
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
     grads_and_vars = list(zip(grads, var_list))
@@ -538,8 +530,8 @@ class Optimizer(
         [v for g, v in grads_and_vars
          if g is not None and v.dtype != dtypes.resource])
 
-    endtime = time.time()
-    #logging.info('@sahiltyagi single off value in compute_grads call ' + str(endtime - starttime) + ' with starttime ' + str(starttime) + ' and endtime ' + str(endtime) + ' and global step ' + str(tf.train.get_or_create_global_step()) + ' and worker_name is ' + worker_name)
+    end = tf.Variable(tf.zeros([]), tf.float32)
+    end = tf.assign(end, time.time(), name='grad_endtime')
     return grads_and_vars
 
   @staticmethod
