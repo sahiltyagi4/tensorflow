@@ -466,9 +466,9 @@ class Optimizer(
     @end_compatibility
     """
     #starttime = time.time()
+    strt = tf.Variable(tf.zeros([]), tf.float32)
+    strt = tf.assign(strt, time.time(), name='grad_starttime')
     if callable(loss):
-      strt = tf.Variable(tf.zeros([]), tf.float32)
-      strt = tf.assign(strt, time.time(), name='grad_starttime')
       with backprop.GradientTape() as tape:
         if var_list is not None:
           tape.watch(var_list)
