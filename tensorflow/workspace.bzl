@@ -1002,3 +1002,18 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "zlib",
         actual = "@zlib_archive//:zlib",
     )
+
+    # Custom build rule for getting time after feeding random tensor
+    cc_binary(
+        name = "get_time.so",
+        srcs = ["get_time.cc"],
+        linkopts = [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        linkshared = 1,
+        linkstatic = 1,
+        deps = [
+            "//third_party/tensorflow/core:framework",
+        ],
+    )
