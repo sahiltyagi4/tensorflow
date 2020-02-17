@@ -25,8 +25,8 @@ class GetTimeOp : public OpKernel {
   			auto output = output_tensor->template flat<float32>();
 
   			microseconds ms = duration_cast< microseconds >(system_clock::now().time_since_epoch());
-  			//output_tensor = ms.count();
-  			output_tensor(0) = ms.count();
+  			output_tensor = ms.count();
+  			//output_tensor(0) = ms.count();
   		}
 };
 
