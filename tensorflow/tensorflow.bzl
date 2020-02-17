@@ -2374,34 +2374,18 @@ def tf_pybind_extension(
         visibility = ["//visibility:private"],
         testonly = testonly,
     )
-    native.cc_binary(
-        name = so_file,
-        srcs = srcs + hdrs,
-        data = data,
-        copts = copts,
-        nocopts = nocopts,
-        linkopts = linkopts + select({
-            "@local_config_cuda//cuda:darwin": [
-                "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
-            ],
-            clean_dep("//tensorflow:windows"): [],
-            "//conditions:default": [
-                "-Wl,--version-script",
-                "$(location %s)" % version_script_file,
-            ],
-        }),
-        deps = deps + [
-            exported_symbols_file,
-            version_script_file,
+    cc_binary(
+        name = "get_time.so",
+        srcs = ["get_time.cc"],
+        linkopts = [
+            "-Wl,-Bsymbolic",
+            "-lm",
         ],
-        features = features,
         linkshared = 1,
-        testonly = testonly,
-        licenses = licenses,
-        visibility = visibility,
-        deprecation = deprecation,
-        restricted_to = restricted_to,
-        compatible_with = compatible_with,
+        linkstatic = 1,
+        deps = [
+            "//third_party/tensorflow/core:framework",
+        ],
     )
     native.genrule(
         name = name + "_pyd_copy",
@@ -2427,21 +2411,6 @@ def tf_pybind_extension(
         deprecation = deprecation,
         restricted_to = restricted_to,
         compatible_with = compatible_with,
-    )
-
-    # Custom build rule for getting time after feeding random tensor
-    cc_binary(
-        name = "get_time.so",
-        srcs = ["get_time.cc"],
-        linkopts = [
-            "-Wl,-Bsymbolic",
-            "-lm",
-        ],
-        linkshared = 1,
-        linkstatic = 1,
-        deps = [
-            "//third_party/tensorflow/core:framework",
-        ],
     )
 
 def if_cuda_or_rocm(if_true, if_false = []):
