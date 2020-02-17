@@ -2374,18 +2374,34 @@ def tf_pybind_extension(
         visibility = ["//visibility:private"],
         testonly = testonly,
     )
-    cc_binary(
-        name = "get_time.so",
-        srcs = ["get_time.cc"],
-        linkopts = [
-            "-Wl,-Bsymbolic",
-            "-lm",
+    native.cc_binary(
+        name = so_file,
+        srcs = srcs + hdrs,
+        data = data,
+        copts = copts,
+        nocopts = nocopts,
+        linkopts = linkopts + select({
+            "@local_config_cuda//cuda:darwin": [
+                "-Wl,-exported_symbols_list,$(location %s)" % exported_symbols_file,
+            ],
+            clean_dep("//tensorflow:windows"): [],
+            "//conditions:default": [
+                "-Wl,--version-script",
+                "$(location %s)" % version_script_file,
+            ],
+        }),
+        deps = deps + [
+            exported_symbols_file,
+            version_script_file,
         ],
+        features = features,
         linkshared = 1,
-        linkstatic = 1,
-        deps = [
-            "//third_party/tensorflow/core:framework",
-        ],
+        testonly = testonly,
+        licenses = licenses,
+        visibility = visibility,
+        deprecation = deprecation,
+        restricted_to = restricted_to,
+        compatible_with = compatible_with,
     )
     native.genrule(
         name = name + "_pyd_copy",
