@@ -7,8 +7,8 @@ using namespace tensorflow;
 using namespace std::chrono;
 
 REGISTER_OP("GetTime")
-		.Input("input_loss_or_gradvars: int32")
-		.Output("out_timestamp: int32");
+		.Input("input_loss_or_gradvars: float32")
+		.Output("out_timestamp: unsigned long long int");
 
 class GetTimeOp : public OpKernel {
 	public:
@@ -17,20 +17,20 @@ class GetTimeOp : public OpKernel {
   		void Compute(OpKernelContext* context) override {
   			//fetching the input tensor
   			const Tensor& input_tensor = context->input(0);
-  			auto input = input_tensor.flat<int32>();
+  			auto input = input_tensor.flat<float32>();
 
   			//creating the output tensor of dim (0)
   			Tensor* output_tensor = NULL;
   			OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(), &output_tensor));
-  			auto output = output_tensor->template flat<int32>();
+  			auto output = output_tensor->template flat<unsigned long long int>();
 
   			const int N = input.size();
     		for (int i = 1; i < N; i++) {
       			output(i) = 0;
     		}
 
-  			microseconds ms = duration_cast< microseconds >(system_clock::now().time_since_epoch());
-  			output(0) = (int32) ms.count();
+  			milliseconds ms = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
+  			output(0) = (unsigned long long int) ms.count();
   		}
 };
 
