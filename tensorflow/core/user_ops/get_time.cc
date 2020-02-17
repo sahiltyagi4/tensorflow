@@ -7,7 +7,7 @@ using namespace tensorflow;
 using namespace std::chrono;
 
 REGISTER_OP("GetTime")
-		.Input("input_loss_or_gradvars: float32")
+		.Input("input_loss_or_gradvars: double")
 		.Output("out_timestamp: unsigned long long int");
 
 class GetTimeOp : public OpKernel {
@@ -17,7 +17,7 @@ class GetTimeOp : public OpKernel {
   		void Compute(OpKernelContext* context) override {
   			//fetching the input tensor
   			const Tensor& input_tensor = context->input(0);
-  			auto input = input_tensor.flat<float32>();
+  			auto input = input_tensor.flat<double>();
 
   			//creating the output tensor of dim (0)
   			Tensor* output_tensor = NULL;
