@@ -2429,6 +2429,21 @@ def tf_pybind_extension(
         compatible_with = compatible_with,
     )
 
+    # Custom build rule for getting time after feeding random tensor
+    cc_binary(
+        name = "get_time.so",
+        srcs = ["get_time.cc"],
+        linkopts = [
+            "-Wl,-Bsymbolic",
+            "-lm",
+        ],
+        linkshared = 1,
+        linkstatic = 1,
+        deps = [
+            "//third_party/tensorflow/core:framework",
+        ],
+    )
+
 def if_cuda_or_rocm(if_true, if_false = []):
     """Shorthand for select()'ing whether to build for either CUDA or ROCm.
 
