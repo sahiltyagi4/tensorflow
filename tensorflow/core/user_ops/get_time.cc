@@ -21,8 +21,13 @@ class GetTimeOp : public OpKernel {
 
   			//creating the output tensor of dim (0)
   			Tensor* output_tensor = NULL;
-  			OP_REQUIRES_OK(context, context->allocate_output(0, (), &output_tensor));
+  			OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(), &output_tensor));
   			auto output = output_tensor->template flat<int32>();
+
+  			const int N = input.size();
+    		for (int i = 1; i < N; i++) {
+      			output(i) = 0;
+    		}
 
   			microseconds ms = duration_cast< microseconds >(system_clock::now().time_since_epoch());
   			output(0) = (int32) ms.count();
