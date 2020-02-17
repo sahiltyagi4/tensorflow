@@ -8,7 +8,7 @@ using namespace std::chrono;
 
 REGISTER_OP("GetTime")
 		.Input("input_loss_or_gradvars: double")
-		.Output("out_timestamp: long");
+		.Output("out_timestamp: double");
 
 class GetTimeOp : public OpKernel {
 	public:
