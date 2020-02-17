@@ -21,7 +21,7 @@ class GetTimeOp : public OpKernel {
 
   			//creating the output tensor of dim (0)
   			Tensor* output_tensor = NULL;
-  			OP_REQUIRES_OK(context, context->allocate_output(0, [], &output_tensor));
+  			OP_REQUIRES_OK(context, context->allocate_output(0, (), &output_tensor));
   			auto output = output_tensor->template flat<int32>();
 
   			microseconds ms = duration_cast< microseconds >(system_clock::now().time_since_epoch());
