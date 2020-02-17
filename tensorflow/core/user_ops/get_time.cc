@@ -8,7 +8,7 @@ using namespace std::chrono;
 
 REGISTER_OP("GetTime")
 		.Input("input_loss_or_gradvars: double")
-		.Output("out_timestamp: unsigned long long int");
+		.Output("out_timestamp: long long int");
 
 class GetTimeOp : public OpKernel {
 	public:
@@ -22,7 +22,7 @@ class GetTimeOp : public OpKernel {
   			//creating the output tensor of dim (0)
   			Tensor* output_tensor = NULL;
   			OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(), &output_tensor));
-  			auto output = output_tensor->template flat<unsigned long long int>();
+  			auto output = output_tensor->template flat<long long int>();
 
   			const int N = input.size();
     		for (int i = 1; i < N; i++) {
@@ -30,7 +30,7 @@ class GetTimeOp : public OpKernel {
     		}
 
   			milliseconds ms = duration_cast< milliseconds >(system_clock::now().time_since_epoch());
-  			output(0) = (unsigned long long int) ms.count();
+  			output(0) = (long long int) ms.count();
   		}
 };
 
