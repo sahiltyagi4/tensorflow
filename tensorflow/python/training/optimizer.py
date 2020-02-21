@@ -468,71 +468,72 @@ class Optimizer(
     #starttime = time.time()
     # strt = tf.Variable(tf.zeros([]), tf.float32)
     # strt = tf.assign(strt, time.time(), name='grad_starttime')
-    if callable(loss):
-      with backprop.GradientTape() as tape:
-        if var_list is not None:
-          tape.watch(var_list)
-        loss_value = loss()
+    with tf.variable_scope('COMPUTE_GRADIENT_SAHIL'):
+      if callable(loss):
+        with backprop.GradientTape() as tape:
+          if var_list is not None:
+            tape.watch(var_list)
+          loss_value = loss()
 
-        # Scale loss if using a "mean" loss reduction and multiple replicas.
-        # Have to be careful to call distribute_lib.get_loss_reduction()
-        # *after* loss() is evaluated, so we know what loss reduction it uses.
-        # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-        loss_value = self._scale_loss(loss_value)
+          # Scale loss if using a "mean" loss reduction and multiple replicas.
+          # Have to be careful to call distribute_lib.get_loss_reduction()
+          # *after* loss() is evaluated, so we know what loss reduction it uses.
+          # TODO(josh11b): Test that we handle weight decay in a reasonable way.
+          loss_value = self._scale_loss(loss_value)
 
-      if var_list is None:
-        var_list = tape.watched_variables()
-      # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
-      # to be executed.
-      with ops.control_dependencies([loss_value]):
-        grads = tape.gradient(loss_value, var_list, grad_loss)
-      return list(zip(grads, var_list))
+        if var_list is None:
+          var_list = tape.watched_variables()
+        # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
+        # to be executed.
+        with ops.control_dependencies([loss_value]):
+          grads = tape.gradient(loss_value, var_list, grad_loss)
+        return list(zip(grads, var_list))
 
-    # Non-callable/Tensor loss case
-    if context.executing_eagerly():
-      raise RuntimeError(
+      # Non-callable/Tensor loss case
+      if context.executing_eagerly():
+        raise RuntimeError(
           "`loss` passed to Optimizer.compute_gradients should "
           "be a function when eager execution is enabled.")
 
-    # Scale loss if using a "mean" loss reduction and multiple replicas.
-    loss = self._scale_loss(loss)
+      # Scale loss if using a "mean" loss reduction and multiple replicas.
+      loss = self._scale_loss(loss)
 
-    if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
-                              Optimizer.GATE_GRAPH]:
-      raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
-                       "Optimizer.GATE_OP, Optimizer.GATE_GRAPH.  Not %s" %
-                       gate_gradients)
-    self._assert_valid_dtypes([loss])
-    if grad_loss is not None:
-      self._assert_valid_dtypes([grad_loss])
-    if var_list is None:
-      var_list = (
-          variables.trainable_variables() +
-          ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
-    else:
-      var_list = nest.flatten(var_list)
-    # pylint: disable=protected-access
-    var_list += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
-    # pylint: enable=protected-access
-    processors = [_get_processor(v) for v in var_list]
-    if not var_list:
-      raise ValueError("No variables to optimize.")
-    var_refs = [p.target() for p in processors]
-    grads = gradients.gradients(
+      if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
+                                Optimizer.GATE_GRAPH]:
+        raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
+                         "Optimizer.GATE_OP, Optimizer.GATE_GRAPH.  Not %s" %
+                         gate_gradients)
+      self._assert_valid_dtypes([loss])
+      if grad_loss is not None:
+        self._assert_valid_dtypes([grad_loss])
+      if var_list is None:
+        var_list = (
+                variables.trainable_variables() +
+                ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+      else:
+        var_list = nest.flatten(var_list)
+      # pylint: disable=protected-access
+      var_list += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
+      # pylint: enable=protected-access
+      processors = [_get_processor(v) for v in var_list]
+      if not var_list:
+        raise ValueError("No variables to optimize.")
+      var_refs = [p.target() for p in processors]
+      grads = gradients.gradients(
         loss, var_refs, grad_ys=grad_loss,
         gate_gradients=(gate_gradients == Optimizer.GATE_OP),
         aggregation_method=aggregation_method,
         colocate_gradients_with_ops=colocate_gradients_with_ops)
-    if gate_gradients == Optimizer.GATE_GRAPH:
-      grads = control_flow_ops.tuple(grads)
-    grads_and_vars = list(zip(grads, var_list))
-    self._assert_valid_dtypes(
+      if gate_gradients == Optimizer.GATE_GRAPH:
+        grads = control_flow_ops.tuple(grads)
+      grads_and_vars = list(zip(grads, var_list))
+      self._assert_valid_dtypes(
         [v for g, v in grads_and_vars
          if g is not None and v.dtype != dtypes.resource])
 
-    # end = tf.Variable(tf.zeros([]), tf.float32)
-    # end = tf.assign(end, time.time(), name='grad_endtime')
-    return grads_and_vars
+      # end = tf.Variable(tf.zeros([]), tf.float32)
+      # end = tf.assign(end, time.time(), name='grad_endtime')
+      return grads_and_vars
 
   @staticmethod
   def _scale_loss(loss_value):

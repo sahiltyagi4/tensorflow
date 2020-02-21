@@ -19,7 +19,7 @@ class GetTimeOp : public OpKernel {
   			const Tensor& input_tensor = context->input(0);
   			auto input = input_tensor.flat<double>();
 
-  			//creating the output tensor of dim (0)
+  			//creating output tensor of input_tensor tensor shape with ts at index 0 n rest values as 0.
   			Tensor* output_tensor = NULL;
   			OP_REQUIRES_OK(context, context->allocate_output(0, input_tensor.shape(), &output_tensor));
   			auto output = output_tensor->template flat<long long int>();
