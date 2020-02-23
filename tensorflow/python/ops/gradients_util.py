@@ -789,7 +789,7 @@ def _GradientsHelper(ys,
     loop_state.PostProcessing()
 
   grads_final = [_GetGrad(grads, x, unconnected_gradients) for x in xs]
-  end_time_op = tf.compat.v1.py_func(func=compute_time, inp=[grads_final], Tout=tf.float32)
+  end_time_op = tf.compat.v1.py_func(func=compute_time, inp=[grads_final[0]], Tout=tf.float32)
   end_time_op = tf.reshape(end_time_op, [-1])
   end_time_op = tf.reduce_sum(end_time_op, name='END_COMP_GRAD_SAHIL')
   return grads_final
