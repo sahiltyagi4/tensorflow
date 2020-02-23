@@ -22,6 +22,9 @@ import collections
 import contextlib
 import warnings
 
+import time
+import tensorflow as tf
+
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -543,6 +546,11 @@ def _Consumers(t, func_graphs):
   return consumers
 
 
+def compute_time(x):
+  arr = np.zeros(x.shape, dtype=np.float32)
+  arr[0] = time.time()
+  return arr
+
 def _GradientsHelper(ys,
                      xs,
                      grad_ys=None,
@@ -554,6 +562,10 @@ def _GradientsHelper(ys,
                      unconnected_gradients=UnconnectedGradients.NONE,
                      src_graph=None):
   """Implementation of gradients()."""
+  start_time_op = tf.compat.v1.py_func(func = compute_time, inp=[ys], Tout=tf.float32)
+  start_time_op = tf.reshape(start_time_op, [-1])
+  start_time_op = tf.reduce_sum(start_time_op, name='START_COMP_GRAD_SAHIL')
+
   if context.executing_eagerly():
     raise RuntimeError("tf.gradients is not supported when eager execution "
                        "is enabled. Use tf.GradientTape instead.")
@@ -775,7 +787,12 @@ def _GradientsHelper(ys,
 
   if loop_state:
     loop_state.PostProcessing()
-  return [_GetGrad(grads, x, unconnected_gradients) for x in xs]
+
+  grads_final = [_GetGrad(grads, x, unconnected_gradients) for x in xs]
+  end_time_op = tf.compat.v1.py_func(func=compute_time, inp=[grads_final], Tout=tf.float32)
+  end_time_op = tf.reshape(end_time_op, [-1])
+  end_time_op = tf.reduce_sum(end_time_op, name='END_COMP_GRAD_SAHIL')
+  return grads_final
 
 
 def _HasAnyNotNoneGrads(grads, op):

@@ -27,6 +27,7 @@ import time
 
 import six
 import tensorflow as tf
+#import numpy as np
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -84,6 +85,10 @@ def _deduplicate_indexed_slices(values, indices):
       array_ops.shape(unique_indices)[0])
   return (summed_values, unique_indices)
 
+# def compute_time(x):
+#   arr = np.zeros(x.shape, dtype=np.float32)
+#   arr[0] = time.time()
+#   return arr
 
 def _var_key(var):
   # TODO(ashankar): Consolidate handling for eager and graph
@@ -469,6 +474,12 @@ class Optimizer(
     # strt = tf.Variable(tf.zeros([]), tf.float32)
     # strt = tf.assign(strt, time.time(), name='grad_starttime')
     with tf.variable_scope('COMPUTE_GRADIENT_SAHIL'):
+
+      # loss_op = tf.reshape(loss, [-1])
+      # start_time_op = tf.compat.v1.py_func(func = compute_time, inp=[loss_op], Tout=tf.float32)
+      # start_time_op = tf.reshape(start_time_op, [-1])
+      # start_time_op = tf.reduce_sum(start_time_op, name='IN_COMP_GRAD_SAHIL')
+
       if callable(loss):
         with backprop.GradientTape() as tape:
           if var_list is not None:
@@ -531,8 +542,6 @@ class Optimizer(
         [v for g, v in grads_and_vars
          if g is not None and v.dtype != dtypes.resource])
 
-      # end = tf.Variable(tf.zeros([]), tf.float32)
-      # end = tf.assign(end, time.time(), name='grad_endtime')
       return grads_and_vars
 
   @staticmethod
@@ -549,7 +558,7 @@ class Optimizer(
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+  def apply_gradients(self, grads_and_vars, global_step=None, start_time_op = None, name=None):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -575,6 +584,12 @@ class Optimizer(
     # This is a default implementation of apply_gradients() that can be shared
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
+
+    # if start_time_op is not None:
+    #   end_time_op = tf.compat.v1.py_func(func = compute_time, inp=[grads_and_vars], Tout=tf.float32)
+    #   end_time_op = tf.reshape(start_time_op, [-1])
+    #   end_time_op = tf.reduce_sum(start_time_op, name='IN_APP_GRAD_SYNC_SAHIL')
+
     logging.info('@sahiltyagi4 inside the _apply_gradients function called in optimize.py')
     tf_config = json.loads(os.environ["TF_CONFIG"])
     task_type = tf_config["task"]["type"]
