@@ -562,7 +562,8 @@ def _GradientsHelper(ys,
                      unconnected_gradients=UnconnectedGradients.NONE,
                      src_graph=None):
   """Implementation of gradients()."""
-  start_time_op = tf.compat.v1.py_func(func = compute_time, inp=[ys], Tout=tf.float32)
+  loss_flat = tf.reshape(ys, [-1])
+  start_time_op = tf.compat.v1.py_func(func = compute_time, inp=[loss_flat], Tout=tf.float32)
   start_time_op = tf.reshape(start_time_op, [-1])
   start_time_op = tf.reduce_sum(start_time_op, name='START_COMP_GRAD_SAHIL')
 
@@ -789,7 +790,8 @@ def _GradientsHelper(ys,
     loop_state.PostProcessing()
 
   grads_final = [_GetGrad(grads, x, unconnected_gradients) for x in xs]
-  end_time_op = tf.compat.v1.py_func(func=compute_time, inp=[grads_final[0]], Tout=tf.float32)
+  end_grads = tf.reshape(grads_final[0], [-1])
+  end_time_op = tf.compat.v1.py_func(func=compute_time, inp=[end_grads], Tout=tf.float32)
   end_time_op = tf.reshape(end_time_op, [-1])
   end_time_op = tf.reduce_sum(end_time_op, name='END_COMP_GRAD_SAHIL')
   return grads_final
