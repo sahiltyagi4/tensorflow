@@ -320,7 +320,7 @@ class Optimizer(
   GATE_OP = 1
   GATE_GRAPH = 2
 
-  def __init__(self, use_locking, name):
+  def __init__(self, use_locking, name, grad_variance=0.0):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -338,6 +338,7 @@ class Optimizer(
       raise ValueError("Must specify the optimizer name")
     self._use_locking = use_locking
     self._name = name
+    self.grad_variance = grad_variance
     # Dictionary of slots.
     #  {slot_name :
     #      {_var_key(variable_to_train): slot_for_the_variable, ... },
@@ -470,79 +471,70 @@ class Optimizer(
     and `colocate_gradients_with_ops` are ignored.
     @end_compatibility
     """
-    #starttime = time.time()
-    # strt = tf.Variable(tf.zeros([]), tf.float32)
-    # strt = tf.assign(strt, time.time(), name='grad_starttime')
-    with tf.variable_scope('COMPUTE_GRADIENT_SAHIL'):
 
-      # loss_op = tf.reshape(loss, [-1])
-      # start_time_op = tf.compat.v1.py_func(func = compute_time, inp=[loss_op], Tout=tf.float32)
-      # start_time_op = tf.reshape(start_time_op, [-1])
-      # start_time_op = tf.reduce_sum(start_time_op, name='IN_COMP_GRAD_SAHIL')
+    if callable(loss):
+      with backprop.GradientTape() as tape:
+        if var_list is not None:
+          tape.watch(var_list)
+        loss_value = loss()
 
-      if callable(loss):
-        with backprop.GradientTape() as tape:
-          if var_list is not None:
-            tape.watch(var_list)
-          loss_value = loss()
+        # Scale loss if using a "mean" loss reduction and multiple replicas.
+        # Have to be careful to call distribute_lib.get_loss_reduction()
+        # *after* loss() is evaluated, so we know what loss reduction it uses.
+        # TODO(josh11b): Test that we handle weight decay in a reasonable way.
+        loss_value = self._scale_loss(loss_value)
 
-          # Scale loss if using a "mean" loss reduction and multiple replicas.
-          # Have to be careful to call distribute_lib.get_loss_reduction()
-          # *after* loss() is evaluated, so we know what loss reduction it uses.
-          # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-          loss_value = self._scale_loss(loss_value)
-
-        if var_list is None:
-          var_list = tape.watched_variables()
-        # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
-        # to be executed.
-        with ops.control_dependencies([loss_value]):
-          grads = tape.gradient(loss_value, var_list, grad_loss)
-        return list(zip(grads, var_list))
-
-      # Non-callable/Tensor loss case
-      if context.executing_eagerly():
-        raise RuntimeError(
-          "`loss` passed to Optimizer.compute_gradients should "
-          "be a function when eager execution is enabled.")
-
-      # Scale loss if using a "mean" loss reduction and multiple replicas.
-      loss = self._scale_loss(loss)
-
-      if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
-                                Optimizer.GATE_GRAPH]:
-        raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
-                         "Optimizer.GATE_OP, Optimizer.GATE_GRAPH.  Not %s" %
-                         gate_gradients)
-      self._assert_valid_dtypes([loss])
-      if grad_loss is not None:
-        self._assert_valid_dtypes([grad_loss])
       if var_list is None:
-        var_list = (
-                variables.trainable_variables() +
-                ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
-      else:
-        var_list = nest.flatten(var_list)
-      # pylint: disable=protected-access
-      var_list += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
-      # pylint: enable=protected-access
-      processors = [_get_processor(v) for v in var_list]
-      if not var_list:
-        raise ValueError("No variables to optimize.")
-      var_refs = [p.target() for p in processors]
-      grads = gradients.gradients(
-        loss, var_refs, grad_ys=grad_loss,
-        gate_gradients=(gate_gradients == Optimizer.GATE_OP),
-        aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops)
-      if gate_gradients == Optimizer.GATE_GRAPH:
-        grads = control_flow_ops.tuple(grads)
-      grads_and_vars = list(zip(grads, var_list))
-      self._assert_valid_dtypes(
-        [v for g, v in grads_and_vars
-         if g is not None and v.dtype != dtypes.resource])
+        var_list = tape.watched_variables()
+      # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
+      # to be executed.
+      with ops.control_dependencies([loss_value]):
+        grads = tape.gradient(loss_value, var_list, grad_loss)
+      return list(zip(grads, var_list))
 
-      return grads_and_vars
+    # Non-callable/Tensor loss case
+    if context.executing_eagerly():
+      raise RuntimeError(
+        "`loss` passed to Optimizer.compute_gradients should "
+        "be a function when eager execution is enabled.")
+
+    # Scale loss if using a "mean" loss reduction and multiple replicas.
+    loss = self._scale_loss(loss)
+
+    if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
+                              Optimizer.GATE_GRAPH]:
+      raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
+                       "Optimizer.GATE_OP, Optimizer.GATE_GRAPH.  Not %s" %
+                       gate_gradients)
+    self._assert_valid_dtypes([loss])
+    if grad_loss is not None:
+      self._assert_valid_dtypes([grad_loss])
+    if var_list is None:
+      var_list = (
+              variables.trainable_variables() +
+              ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+    else:
+      var_list = nest.flatten(var_list)
+    # pylint: disable=protected-access
+    var_list += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
+    # pylint: enable=protected-access
+    processors = [_get_processor(v) for v in var_list]
+    if not var_list:
+      raise ValueError("No variables to optimize.")
+    var_refs = [p.target() for p in processors]
+    grads = gradients.gradients(
+      loss, var_refs, grad_ys=grad_loss,
+      gate_gradients=(gate_gradients == Optimizer.GATE_OP),
+      aggregation_method=aggregation_method,
+      colocate_gradients_with_ops=colocate_gradients_with_ops)
+    if gate_gradients == Optimizer.GATE_GRAPH:
+      grads = control_flow_ops.tuple(grads)
+    grads_and_vars = list(zip(grads, var_list))
+    self._assert_valid_dtypes(
+      [v for g, v in grads_and_vars
+       if g is not None and v.dtype != dtypes.resource])
+
+    return grads_and_vars
 
   @staticmethod
   def _scale_loss(loss_value):
@@ -558,7 +550,10 @@ class Optimizer(
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 
-  def apply_gradients(self, grads_and_vars, global_step=None, start_time_op = None, name=None):
+  def fetch_gradvariance(self):
+    return None
+
+  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -591,20 +586,18 @@ class Optimizer(
     #   end_time_op = tf.reduce_sum(start_time_op, name='IN_APP_GRAD_SYNC_SAHIL')
 
     logging.info('@sahiltyagi4 inside the _apply_gradients function called in optimize.py')
-    tf_config = json.loads(os.environ["TF_CONFIG"])
-    task_type = tf_config["task"]["type"]
-    task_id = tf_config["task"]["index"]
-    logging.info('@sahiltyagi4 TF_CONFIG task-type called from _apply_gradient %s', task_type)
-    batch_size_list = tf_config["batch_size_list"]
-    if task_type == 'master':
-      logging.info('@sahiltyagi ......master node value of per-node batch size %d', batch_size_list[1])
-    if task_type == 'worker':
-      if task_id == 0:
-        logging.info('@sahiltyagi at worker node-0')
-        logging.info('@sahiltyagi ......worker node value of per-node batch size %d', batch_size_list[2])
-      elif task_id == 1:
-        logging.info('@sahiltyagi at worker node-1')
-        logging.info('@sahiltyagi ......worker node value of per-node batch size %d', batch_size_list[3])
+
+    # @sahiltyagi4 for calculating gradient variance in ASP
+    gradients = [grad[0] for grad in grads_and_vars]
+    variance_list = []
+    for g in gradients:
+      variance_list.append(tf.reduce_sum(g))
+
+    vars_stack = tf.stack(variance_list, 0)
+    vars_concat = tf.concat(vars_stack, 0)
+    gradient_variance = tf.math.reduce_variance(vars_concat)
+    self.grad_variance = gradient_variance
+
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
@@ -685,6 +678,9 @@ class Optimizer(
           train_op.append(apply_updates)
 
       return apply_updates
+
+  def fetch_gradvariance(self):
+    return self.grad_variance
 
   def _distributed_apply(self,
                          distribution,
