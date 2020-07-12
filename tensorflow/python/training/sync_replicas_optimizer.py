@@ -286,7 +286,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         initial_value=0.0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float16,
+        dtype=tf.float32,
         name="agg_grads_variance0")
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
