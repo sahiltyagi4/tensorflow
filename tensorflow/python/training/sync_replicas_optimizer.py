@@ -21,6 +21,8 @@ from __future__ import print_function
 import time
 import numpy as np
 import tensorflow as tf
+import os
+import json
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.distribute import distribution_strategy_context
@@ -315,13 +317,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           self._accumulator_list.append((grad_accum, var.device))
 
       # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
-      variance_list = []
-      for grad in aggregated_grad:
-        variance_list.append(tf.reduce_sum(grad))
 
-      vars_stack = tf.stack(variance_list, 0)
-      vars_concat = tf.concat(vars_stack, 0)
-      gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
+      tf_config = json.loads(os.environ['TF_CONFIG'])
+      tasktype = tf_config['task']['type']
+      if tasktype == 'master':
+        variance_list = []
+        for grad in aggregated_grad:
+          variance_list.append(tf.reduce_sum(grad))
+
+        vars_stack = tf.stack(variance_list, 0)
+        vars_concat = tf.concat(vars_stack, 0)
+        gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
