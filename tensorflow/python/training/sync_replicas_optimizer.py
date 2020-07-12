@@ -283,7 +283,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         name="sync_rep_local_step")
 
       self._grad_variance = variable_scope.variable(
-        initial_value=0.0,
+        initial_value=0.5,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=tf.float32,
@@ -331,7 +331,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       vars_stack = tf.stack(variance_list, 0)
       vars_concat = tf.concat(vars_stack, 0)
       #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-      tf.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
+      #tf.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
+      state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat))
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
