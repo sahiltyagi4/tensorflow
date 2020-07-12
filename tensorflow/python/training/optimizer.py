@@ -667,9 +667,6 @@ class Optimizer(
 
       return apply_updates
 
-  def fetch_gradvariance(self):
-    return self.grad_variance
-
   def _distributed_apply(self,
                          distribution,
                          grads_and_vars,

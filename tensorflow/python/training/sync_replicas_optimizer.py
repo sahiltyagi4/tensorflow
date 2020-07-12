@@ -324,15 +324,14 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           self._accumulator_list.append((grad_accum, var.device))
 
       # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
-      variance_list = []
-      for grad in aggregated_grad:
-        variance_list.append(tf.reduce_sum(grad))
-
-      vars_stack = tf.stack(variance_list, 0)
-      vars_concat = tf.concat(vars_stack, 0)
-      #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-      #tf.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-      state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
+      # variance_list = []
+      # for grad in aggregated_grad:
+      #   variance_list.append(tf.reduce_sum(grad))
+      #
+      # vars_stack = tf.stack(variance_list, 0)
+      # vars_concat = tf.concat(vars_stack, 0)
+      # #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
+      # state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
@@ -387,7 +386,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               global_step, name="SetGlobalStep"))
       self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
       self._gradients_applied = True
-      return train_op
+      return train_op, aggregated_grads_and_vars
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
