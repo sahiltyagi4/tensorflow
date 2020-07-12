@@ -321,7 +321,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
       vars_stack = tf.stack(variance_list, 0)
       vars_concat = tf.concat(vars_stack, 0)
-      gradient_variance = tf.math.reduce_variance(vars_concat)
+      gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
@@ -376,7 +376,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               global_step, name="SetGlobalStep"))
       self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
       self._gradients_applied = True
-      return train_op, gradient_variance
+      return train_op
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.

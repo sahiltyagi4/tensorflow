@@ -320,7 +320,7 @@ class Optimizer(
   GATE_OP = 1
   GATE_GRAPH = 2
 
-  def __init__(self, use_locking, name, grad_variance=0.0):
+  def __init__(self, use_locking, name):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -338,7 +338,6 @@ class Optimizer(
       raise ValueError("Must specify the optimizer name")
     self._use_locking = use_locking
     self._name = name
-    self.grad_variance = grad_variance
     # Dictionary of slots.
     #  {slot_name :
     #      {_var_key(variable_to_train): slot_for_the_variable, ... },
@@ -586,17 +585,6 @@ class Optimizer(
     #   end_time_op = tf.reduce_sum(start_time_op, name='IN_APP_GRAD_SYNC_SAHIL')
 
     logging.info('@sahiltyagi4 inside the _apply_gradients function called in optimize.py')
-
-    # @sahiltyagi4 for calculating gradient variance in ASP
-    gradients = [grad[0] for grad in grads_and_vars]
-    variance_list = []
-    for g in gradients:
-      variance_list.append(tf.reduce_sum(g))
-
-    vars_stack = tf.stack(variance_list, 0)
-    vars_concat = tf.concat(vars_stack, 0)
-    gradient_variance = tf.math.reduce_variance(vars_concat)
-    self.grad_variance = gradient_variance
 
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
