@@ -332,7 +332,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       vars_concat = tf.concat(vars_stack, 0)
       #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
       #tf.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-      state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat))
+      state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
