@@ -337,7 +337,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(""):
-        update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
+        update_op, agg_gradvars = self._opt.apply_gradients(aggregated_grads_and_vars,
                                               global_step)
 
       # Create token queue.
@@ -386,7 +386,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               global_step, name="SetGlobalStep"))
       self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
       self._gradients_applied = True
-      return train_op, aggregated_grads_and_vars
+      # return train_op, agg_gradvars
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
