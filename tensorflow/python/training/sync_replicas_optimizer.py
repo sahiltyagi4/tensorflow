@@ -285,7 +285,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       self._grad_variance = variable_scope.variable(
         initial_value=0.0,
         trainable=False,
-        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=tf.float32,
         name="agg_grads_variance0")
 
