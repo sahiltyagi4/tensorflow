@@ -282,12 +282,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
 
-      # self._grad_variance = variable_scope.variable(
-      #   initial_value=0.7,
-      #   trainable=False,
-      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      #   dtype=tf.float32,
-      #   name="agg_grads_variance0")
+      self._grad_variance = variable_scope.variable(
+        initial_value=0.9999,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="agg_grads_variance0")
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
@@ -386,7 +386,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       vars_concat = tf.concat(vars_stack, 0)
       #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
       #state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-      tf.get_variable('agg_grads_variance1').assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
+      #tf.get_variable('agg_grads_variance1').assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
+
+      self._grad_variance.assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
 
       return train_op
 
