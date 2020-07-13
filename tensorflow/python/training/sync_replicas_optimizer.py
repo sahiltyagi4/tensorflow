@@ -388,7 +388,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       #state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
       #tf.get_variable('agg_grads_variance1').assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
 
-      self._grad_variance.assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
+      #self._grad_variance.assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
+      final_grad_variance = tf.compat.v1.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), validate_shape=False, use_locking=False, name = 'qwertyio')
 
       return train_op
 
