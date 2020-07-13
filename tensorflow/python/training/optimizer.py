@@ -665,7 +665,7 @@ class Optimizer(
         if apply_updates not in train_op:
           train_op.append(apply_updates)
 
-      return apply_updates, grads_and_vars
+      return apply_updates
 
   def _distributed_apply(self,
                          distribution,

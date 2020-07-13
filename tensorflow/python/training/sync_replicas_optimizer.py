@@ -282,12 +282,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
 
-      self._grad_variance = variable_scope.variable(
-        initial_value=0.5,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="agg_grads_variance0")
+      # self._grad_variance = variable_scope.variable(
+      #   initial_value=0.7,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="agg_grads_variance0")
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
@@ -323,21 +323,11 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           self._accumulator_list.append((grad_accum, var.device))
 
-      # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
-      # variance_list = []
-      # for grad in aggregated_grad:
-      #   variance_list.append(tf.reduce_sum(grad))
-      #
-      # vars_stack = tf.stack(variance_list, 0)
-      # vars_concat = tf.concat(vars_stack, 0)
-      # #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-      # state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(""):
-        update_op, agg_gradvars = self._opt.apply_gradients(aggregated_grads_and_vars,
+        update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
                                               global_step)
 
       # Create token queue.
@@ -386,7 +376,19 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               global_step, name="SetGlobalStep"))
       self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
       self._gradients_applied = True
-      return train_op, agg_gradvars
+
+      # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
+      variance_list = []
+      for grad in aggregated_grad:
+        variance_list.append(tf.reduce_sum(grad))
+
+      vars_stack = tf.stack(variance_list, 0)
+      vars_concat = tf.concat(vars_stack, 0)
+      #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
+      #state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
+      tf.get_variable('agg_grads_variance1').assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
+
+      return train_op
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
