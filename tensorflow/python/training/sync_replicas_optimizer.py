@@ -389,9 +389,14 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       #tf.get_variable('agg_grads_variance1').assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
 
       #self._grad_variance.assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
-      final_grad_variance = tf.compat.v1.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), validate_shape=False, use_locking=False, name = 'qwertyio')
+      tf.compat.v1.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), validate_shape=False, use_locking=False, name='qwertyio')
+      tensors_to_log = {'gradient_variance': self._grad_variance}
+      self._logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=5)
 
       return train_op
+
+  def get_logging_variance_hook(self):
+    return self._logging_hook
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
