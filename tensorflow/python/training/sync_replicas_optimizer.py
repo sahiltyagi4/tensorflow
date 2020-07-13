@@ -324,6 +324,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           self._accumulator_list.append((grad_accum, var.device))
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
+      agg_g_v = list(zip(aggregated_grad, var_list))
 
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(""):
@@ -379,7 +380,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
       # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
       variance_list = []
-      new_grads = [(gr1[0]) for gr1 in aggregated_grads_and_vars]
+      new_grads = [(gr1[0]) for gr1 in agg_g_v]
       for g2 in new_grads:
         variance_list.append(tf.reduce_sum(g2))
 
