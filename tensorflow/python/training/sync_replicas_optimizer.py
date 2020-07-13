@@ -282,12 +282,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
 
-      self._grad_variance = variable_scope.variable(
-        initial_value=0.9999,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="agg_grads_variance0")
+      # self._grad_variance = variable_scope.variable(
+      #   initial_value=0.1123,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="agg_grads_variance0")
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
@@ -378,25 +378,24 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       self._gradients_applied = True
 
       # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
-      variance_list = []
-      for grad in aggregated_grad:
-        variance_list.append(tf.reduce_sum(grad))
+      # variance_list = []
+      # for grad in aggregated_grad:
+      #   variance_list.append(tf.reduce_sum(grad))
+      #
+      # vars_stack = tf.stack(variance_list, 0)
+      # vars_concat = tf.concat(vars_stack, 0)
 
-      vars_stack = tf.stack(variance_list, 0)
-      vars_concat = tf.concat(vars_stack, 0)
       #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
       #state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
       #tf.get_variable('agg_grads_variance1').assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
 
       #self._grad_variance.assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
-      tf.compat.v1.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), validate_shape=False, use_locking=False, name='qwertyio')
-      tensors_to_log = {'gradient_variance': self._grad_variance}
-      self._logging_hook = tf.train.LoggingTensorHook(tensors=tensors_to_log, every_n_iter=5)
+      # final_grad_variance = tf.compat.v1.assign(self._grad_variance, tf.math.reduce_variance(vars_concat),
+      #                                           validate_shape=False, use_locking=False, name='qwertyio')
+
+      test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'), 13.0, name='pqrstuv1234')
 
       return train_op
-
-  def get_logging_variance_hook(self):
-    return self._logging_hook
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
