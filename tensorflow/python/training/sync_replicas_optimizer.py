@@ -378,12 +378,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       self._gradients_applied = True
 
       # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
-      # variance_list = []
-      # for grad in aggregated_grad:
-      #   variance_list.append(tf.reduce_sum(grad))
-      #
-      # vars_stack = tf.stack(variance_list, 0)
-      # vars_concat = tf.concat(vars_stack, 0)
+      variance_list = []
+      for grad in aggregated_grad:
+        variance_list.append(tf.reduce_sum(grad))
+
+      vars_stack = tf.stack(variance_list, 0)
+      vars_concat = tf.concat(vars_stack, 0)
 
       #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
       #state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
@@ -393,7 +393,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       # final_grad_variance = tf.compat.v1.assign(self._grad_variance, tf.math.reduce_variance(vars_concat),
       #                                           validate_shape=False, use_locking=False, name='qwertyio')
 
-      test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'), 13.0, name='pqrstuv1234')
+      test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'), tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
       return train_op
 
