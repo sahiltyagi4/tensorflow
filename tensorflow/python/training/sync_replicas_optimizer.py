@@ -378,10 +378,16 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       self._gradients_applied = True
 
       # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
-      new_grads = [(gr1[0]) for gr1 in grads_and_vars]
       variance_list = []
+      new_grads = [(gr1[0]) for gr1 in aggregated_grads_and_vars]
       for g2 in new_grads:
         variance_list.append(tf.reduce_sum(g2))
+
+      # THIS WORKS!
+      # new_grads = [(gr1[0]) for gr1 in grads_and_vars]
+      # for g2 in new_grads:
+      #   variance_list.append(tf.reduce_sum(g2))
+
       # for grad in aggregated_grad:
       #   variance_list.append(tf.reduce_sum(grad))
 
