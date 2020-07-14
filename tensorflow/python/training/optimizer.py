@@ -591,6 +591,7 @@ class Optimizer(
     # as needed.
     if distribute_ctx.has_strategy():
       # Handle DistributionStrategy case.
+      logging.info('@sahiltyagi using distribution context has strategy....')
       if distribute_ctx.in_cross_replica_context():
         raise RuntimeError("Use `_distributed_apply()` instead of "
                            "`apply_gradients()` in a cross-replica context.")
@@ -600,6 +601,9 @@ class Optimizer(
           self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
+    logging.info('@sahiltyagi4 in the NO DISTRIBUTION STRATEGY CASE...')
+    variance_list = []
+
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
     if not grads_and_vars:
       raise ValueError("No variables provided.")
@@ -609,6 +613,7 @@ class Optimizer(
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
           g = ops.convert_to_tensor_or_indexed_slices(g)
+          variance_list.append(tf.reduce_sum(g))
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -619,6 +624,10 @@ class Optimizer(
       p = _get_processor(v)
       converted_grads_and_vars.append((g, v, p))
 
+    vars_stack = tf.stack(variance_list, 0)
+    vars_concat = tf.concat(vars_stack, 0)
+    test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
+                          tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
     converted_grads_and_vars = tuple(converted_grads_and_vars)
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
     if not var_list:
