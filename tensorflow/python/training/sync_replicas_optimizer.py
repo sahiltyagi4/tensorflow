@@ -375,6 +375,15 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # step so the replicas can fetch them to start the next step.
           tokens = array_ops.fill([self._tokens_per_step], global_step)
           sync_op = sync_token_queue.enqueue_many((tokens,))
+          variance_list = []
+          new_grads = [(gr1[0]) for gr1 in aggregated_grads_and_vars]
+          for g9 in new_grads:
+            variance_list.append(tf.reduce_sum(g9))
+
+          vars_stack = tf.stack(variance_list, 0)
+          vars_concat = tf.concat(vars_stack, 0)
+          test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
+                                tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
         if self._variable_averages is not None:
           with ops.control_dependencies([sync_op]), ops.name_scope(""):
