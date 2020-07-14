@@ -303,6 +303,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             aggregated_grad.append(None)  # pass-through.
             continue
           elif isinstance(grad, ops.Tensor):
+            logging.info('@sahiltyagi4 its a Tensor !!')
             grad_accum = data_flow_ops.ConditionalAccumulator(
               grad.dtype,
               shape=var.get_shape(),
@@ -312,6 +313,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             aggregated_grad.append(grad_accum.take_grad(
               self._replicas_to_aggregate))
           else:
+            logging.info('@sahiltyagi4 its a IndexedSlice !!')
             if not isinstance(grad, ops.IndexedSlices):
               raise ValueError("Unknown grad type!")
             grad_accum = data_flow_ops.SparseConditionalAccumulator(
@@ -324,7 +326,16 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           self._accumulator_list.append((grad_accum, var.device))
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
-      agg_g_v = list(zip(aggregated_grad, var_list))
+
+      for g3 in aggregated_grad:
+        if g3 is None:
+          logging.info('@sahiltyagi4 aggregated gradient is none!')
+        elif isinstance(g3, ops.Tensor):
+          logging.info('@sahiltyagi4 aggregated gradient is Tensor')
+        elif isinstance(g3, ops.IndexedSlices):
+          logging.info('@sahiltyagi4 aggregated gradient is IndexSlices')
+        else:
+          logging.info('@sahiltyagi4 aggregated gradient is different type ' + type(g3))
 
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(""):
@@ -380,7 +391,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
       # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
       variance_list = []
-      new_grads = [(gr1[0]) for gr1 in agg_g_v]
+      new_grads = [(gr1[0]) for gr1 in aggregated_grads_and_vars]
       for g2 in new_grads:
         variance_list.append(tf.reduce_sum(g2))
 
