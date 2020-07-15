@@ -391,7 +391,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               self._variables_to_average)
 
         self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                            [sync_op, test_var2])
+                                                            [sync_op])
       for accum, dev in self._accumulator_list:
         with ops.device(dev):
           chief_init_ops.append(
@@ -551,6 +551,7 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
     self._num_tokens = num_tokens
 
   def begin(self):
+    logging.info('@sahiltyagi4 sync replicas hook begin call')
     if self._sync_optimizer._gradients_applied is False:  # pylint: disable=protected-access
       raise ValueError(
           "SyncReplicasOptimizer.apply_gradient should be called before using "
@@ -571,6 +572,7 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
 
   def after_create_session(self, session, coord):
     """Runs SyncReplicasOptimizer initialization ops."""
+    logging.info('@sahiltyagi4 sync replicas hook after_create_session call')
     local_init_success, msg = session_manager._ready(  # pylint: disable=protected-access
         self._ready_for_local_init_op, session,
         "Model is not ready for SyncReplicasOptimizer local init.")
