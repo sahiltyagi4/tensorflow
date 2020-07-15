@@ -169,6 +169,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                total_num_replicas=None,
                variable_averages=None,
                variables_to_average=None,
+               test_var=None,
                use_locking=False,
                name="sync_replicas"):
     """Construct a sync_replicas optimizer.
@@ -208,6 +209,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     self._tokens_per_step = max(total_num_replicas, replicas_to_aggregate)
     self._global_step = None
     self._sync_token_queue = None
+    self._test_var = test_var
 
     # The synchronization op will be executed in a queue runner which should
     # only be executed by one of the replicas (usually the chief).
@@ -382,8 +384,11 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           vars_stack = tf.stack(variance_list, 0)
           vars_concat = tf.concat(vars_stack, 0)
-          test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
-                                tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
+          # test_var = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
+          #                       tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
+
+          self._test_var = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
+                               tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
         if self._variable_averages is not None:
           with ops.control_dependencies([sync_op]), ops.name_scope(""):
@@ -588,8 +593,9 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
       self._q_runner.create_threads(
           session, coord=coord, daemon=True, start=True)
 
-  # def after_run(self,
-  #               run_context,  # pylint: disable=unused-argument
-  #               run_values):
-  #   if self._is_chief and self._sync_optimizer._gradients_applied is True:
-  #     run_context.session.run([self.])
+  def after_run(self,
+                run_context,  # pylint: disable=unused-argument
+                run_values):
+    logging.info('@sahiltyagi4 sync replicas hook AFTER RUN call..')
+    if self._is_chief and self._sync_optimizer._gradients_applied is True:
+      run_context.session.run([self._sync_optimizer._test_var])
