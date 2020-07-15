@@ -377,18 +377,18 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # step so the replicas can fetch them to start the next step.
           tokens = array_ops.fill([self._tokens_per_step], global_step)
           sync_op = sync_token_queue.enqueue_many((tokens,))
-          variance_list = []
-          new_grads = [(gr1[0]) for gr1 in aggregated_grads_and_vars]
-          for g9 in new_grads:
-            variance_list.append(tf.reduce_sum(g9))
-
-          vars_stack = tf.stack(variance_list, 0)
-          vars_concat = tf.concat(vars_stack, 0)
+          # variance_list = []
+          # new_grads = [(gr1[0]) for gr1 in aggregated_grads_and_vars]
+          # for g9 in new_grads:
+          #   variance_list.append(tf.reduce_sum(g9))
+          #
+          # vars_stack = tf.stack(variance_list, 0)
+          # vars_concat = tf.concat(vars_stack, 0)
           # test_var = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
           #                       tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
-          self._test_var = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
-                               tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
+          # self._test_var = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
+          #                      tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
         if self._variable_averages is not None:
           with ops.control_dependencies([sync_op]), ops.name_scope(""):
@@ -432,6 +432,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       #self._grad_variance.assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
       # final_grad_variance = tf.compat.v1.assign(self._grad_variance, tf.math.reduce_variance(vars_concat),
       #                                           validate_shape=False, use_locking=False, name='qwertyio')
+
+      with ops.control_dependencies([train_op]):
+        variance_list = []
+        new_grads = [(gr1[0]) for gr1 in aggregated_grads_and_vars]
+        for g9 in new_grads:
+          variance_list.append(tf.reduce_sum(g9))
+
+        vars_stack = tf.stack(variance_list, 0)
+        vars_concat = tf.concat(vars_stack, 0)
+        test_var = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
+                             tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
       return train_op
 
@@ -593,9 +604,9 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
       self._q_runner.create_threads(
           session, coord=coord, daemon=True, start=True)
 
-  def after_run(self,
-                run_context,  # pylint: disable=unused-argument
-                run_values):
-    logging.info('@sahiltyagi4 sync replicas hook AFTER RUN call..')
-    if self._is_chief and self._sync_optimizer._gradients_applied is True:
-      run_context.session.run([self._sync_optimizer._test_var])
+  # def after_run(self,
+  #               run_context,  # pylint: disable=unused-argument
+  #               run_values):
+  #   logging.info('@sahiltyagi4 sync replicas hook AFTER RUN call..')
+  #   if self._is_chief and self._sync_optimizer._gradients_applied is True:
+  #     run_context.session.run([self._sync_optimizer._test_var])
