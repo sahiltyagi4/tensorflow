@@ -391,7 +391,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               self._variables_to_average)
 
         self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                            [sync_op])
+                                                            [sync_op, test_var2])
       for accum, dev in self._accumulator_list:
         with ops.device(dev):
           chief_init_ops.append(
@@ -586,7 +586,8 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
       self._q_runner.create_threads(
           session, coord=coord, daemon=True, start=True)
 
-  def after_run(self,
-                run_context,  # pylint: disable=unused-argument
-                run_values):
-    run_context.session.run(tf.get_default_graph().get_operation_by_name('pqrstuv1234'))
+  # def after_run(self,
+  #               run_context,  # pylint: disable=unused-argument
+  #               run_values):
+  #   if self._is_chief and self._sync_optimizer._gradients_applied is True:
+  #     run_context.session.run([self.])
