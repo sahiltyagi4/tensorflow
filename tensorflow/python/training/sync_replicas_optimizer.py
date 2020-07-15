@@ -585,3 +585,8 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
     if self._q_runner is not None:
       self._q_runner.create_threads(
           session, coord=coord, daemon=True, start=True)
+
+  def after_run(self,
+                run_context,  # pylint: disable=unused-argument
+                run_values):
+    run_context.session.run(tf.get_default_graph().get_operation_by_name('pqrstuv1234'))
