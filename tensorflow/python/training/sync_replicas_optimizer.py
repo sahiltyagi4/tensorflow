@@ -282,12 +282,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
 
-      # self._grad_variance = variable_scope.variable(
-      #   initial_value=0.1123,
-      #   trainable=False,
-      #   collections=[ops.GraphKeys.GLOBAL_VARIABLES],
-      #   dtype=tf.float32,
-      #   name="agg_grads_variance0")
+      self._grad_variance = variable_scope.variable(
+        initial_value=0.786,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="agg_grads_variance0")
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
@@ -382,11 +382,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           vars_stack = tf.stack(variance_list, 0)
           vars_concat = tf.concat(vars_stack, 0)
-          test_var = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
-                                tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
-          test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
-                               tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
+          # test_var = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
+          #                       tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
+
+          # test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
+          #                      tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
         if self._variable_averages is not None:
           with ops.control_dependencies([sync_op]), ops.name_scope(""):
@@ -395,6 +396,10 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
         self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
                                                             [sync_op])
+
+        with ops.control_dependencies([sync_op]):
+          test_var2 = tf.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
+
       for accum, dev in self._accumulator_list:
         with ops.device(dev):
           chief_init_ops.append(
