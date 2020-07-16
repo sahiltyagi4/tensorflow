@@ -529,8 +529,7 @@ class Optimizer(
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
 
-    grads_var = tf.Variable(grads, trainable=False, name='gradientprint123')
-    grad_print_op = tf.assign(grads_var, grads, name='op_grad_print')
+    grads_var = tf.concat([grads], axis=0, name='gradientprint123')
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
       [v for g, v in grads_and_vars
