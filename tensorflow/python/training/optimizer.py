@@ -528,6 +528,9 @@ class Optimizer(
       colocate_gradients_with_ops=colocate_gradients_with_ops)
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
+
+    grads_var = tf.Variable(grads, trainable=False, name='gradientprint123')
+    grad_print_op = tf.assign(grads_var, grads, name='op_grad_print')
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
       [v for g, v in grads_and_vars
@@ -548,9 +551,6 @@ class Optimizer(
         loss_value *= (1. / num_replicas)
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
-
-  def fetch_gradvariance(self):
-    return None
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
@@ -628,7 +628,7 @@ class Optimizer(
     # vars_concat = tf.concat(vars_stack, 0)
     # test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
     #                       tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
-    
+
     converted_grads_and_vars = tuple(converted_grads_and_vars)
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
     if not var_list:
