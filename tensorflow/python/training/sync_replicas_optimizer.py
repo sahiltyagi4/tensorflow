@@ -425,6 +425,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       #
       # vars_stack = tf.stack(variance_list, 0)
       # vars_concat = tf.concat(vars_stack, 0)
+
       # test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
       #                       tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 

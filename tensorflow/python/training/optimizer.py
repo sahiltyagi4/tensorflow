@@ -529,9 +529,15 @@ class Optimizer(
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
 
+    # variance_list = []
+    # for g2 in grads:
+    #   variance_list.append(tf.reduce_sum(g2))
+    # vars_stack = tf.stack(variance_list, 0)
+    # vars_concat = tf.concat(vars_stack, 0, name='gradientprint123')
+
     variance_list = []
     for g2 in grads:
-      variance_list.append(tf.reduce_sum(g2))
+      variance_list.append(tf.reshape(g2, [-1]))
     vars_stack = tf.stack(variance_list, 0)
     vars_concat = tf.concat(vars_stack, 0, name='gradientprint123')
 
