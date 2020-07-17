@@ -538,8 +538,8 @@ class Optimizer(
     variance_list = []
     for g2 in grads:
       variance_list.append(tf.reshape(g2, [-1]))
-    vars_stack = tf.stack(variance_list, 0)
-    vars_concat = tf.concat(vars_stack, 0, name='gradientprint123')
+    vars_concat = tf.concat(variance_list, 0)
+    flattened_gradients = tf.reshape(vars_concat, [-1], name='gradientprint123')
 
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
