@@ -540,6 +540,7 @@ class Optimizer(
       variance_list.append(tf.reshape(g2, [-1]))
     vars_concat = tf.concat(variance_list, 0)
     flattened_gradients = tf.reshape(vars_concat, [-1], name='gradientprint123')
+    gradient_length = tf.shape(flattened_gradients, name='gradientslength')
 
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
