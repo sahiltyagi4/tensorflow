@@ -259,6 +259,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       ValueError: If global step is not provided, the staleness cannot be
         checked.
     """
+    logging.info('@sahiltyagi4 in sync replica opt apply_gradients')
     if not grads_and_vars:
       raise ValueError("Must supply at least one variable")
 
@@ -282,12 +283,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
 
-      self._grad_variance = variable_scope.variable(
-        initial_value=0.786,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="agg_grads_variance0")
+      # self._grad_variance = variable_scope.variable(
+      #   initial_value=0.786,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="agg_grads_variance0")
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
@@ -328,16 +329,14 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
-      for g3 in aggregated_grad:
-        if g3 is None:
-          logging.info('@sahiltyagi4 aggregated gradient is none!')
-        elif isinstance(g3, ops.Tensor):
-          logging.info('@sahiltyagi4 aggregated gradient is Tensor')
-          logging.info('@sahiltyagi4 shape of g3 is ' + str(g3.shape))
-        elif isinstance(g3, ops.IndexedSlices):
-          logging.info('@sahiltyagi4 aggregated gradient is IndexSlices')
-        else:
-          logging.info('@sahiltyagi4 aggregated gradient is different type ' + type(g3))
+      # for g3 in aggregated_grad:
+      #   if g3 is None:
+      #     logging.info('@sahiltyagi4 aggregated gradient is none!')
+      #   elif isinstance(g3, ops.Tensor):
+      #     logging.info('@sahiltyagi4 aggregated gradient is Tensor')
+      #     logging.info('@sahiltyagi4 shape of g3 is ' + str(g3.shape))
+      #   elif isinstance(g3, ops.IndexedSlices):
+      #     logging.info('@sahiltyagi4 aggregated gradient is IndexSlices')
 
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(""):
@@ -376,14 +375,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           tokens = array_ops.fill([self._tokens_per_step], global_step)
           sync_op = sync_token_queue.enqueue_many((tokens,))
 
-          variance_list = []
-          for g2 in aggregated_grad:
-            variance_list.append(tf.reshape(g2, [-1]))
-          vars_concat = tf.concat(variance_list, 0)
-          flattened_gradients = tf.reshape(vars_concat, [-1], name='gradientprint123')
-          gradient_length = tf.shape(flattened_gradients, name='gradientslength')
-          test_var2 = tf.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
-
         if self._variable_averages is not None:
           with ops.control_dependencies([sync_op]), ops.name_scope(""):
             sync_op = self._variable_averages.apply(
@@ -400,36 +391,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
       self._gradients_applied = True
 
-      # @sahiltyagi4. calculating aggregated gradient variance across all workers in BSP approach
-
-      # THIS WORKS!
-      # new_grads = [(gr1[0]) for gr1 in grads_and_vars]
-      # for g2 in new_grads:
-      #   variance_list.append(tf.reduce_sum(g2))
-
-      # for grad in aggregated_grad:
-      #   variance_list.append(tf.reduce_sum(grad))
-
-      # variance_list = []
-      # new_grads = [(gr1[0]) for gr1 in aggregated_grads_and_vars]
-      # for g2 in new_grads:
-      #   variance_list.append(tf.reduce_sum(g2))
-      #
-      # vars_stack = tf.stack(variance_list, 0)
-      # vars_concat = tf.concat(vars_stack, 0)
-
-      # test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
-      #                       tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
-
-      #gradient_variance = tf.Variable(tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-      #state_ops.assign(self._grad_variance, tf.math.reduce_variance(vars_concat), name='aggregated_gradients_variance')
-      #tf.get_variable('agg_grads_variance1').assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
-
-      #self._grad_variance.assign(tf.math.reduce_variance(vars_concat), name='xyz_test_assignment')
-      # final_grad_variance = tf.compat.v1.assign(self._grad_variance, tf.math.reduce_variance(vars_concat),
-      #                                           validate_shape=False, use_locking=False, name='qwertyio')
-
-      return train_op
+      return train_op, aggregated_grad
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
