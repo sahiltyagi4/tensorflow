@@ -531,16 +531,10 @@ class Optimizer(
 
     # variance_list = []
     # for g2 in grads:
-    #   variance_list.append(tf.reduce_sum(g2))
-    # vars_stack = tf.stack(variance_list, 0)
-    # vars_concat = tf.concat(vars_stack, 0, name='gradientprint123')
-
-    variance_list = []
-    for g2 in grads:
-      variance_list.append(tf.reshape(g2, [-1]))
-    vars_concat = tf.concat(variance_list, 0)
-    flattened_gradients = tf.reshape(vars_concat, [-1], name='gradientprint123')
-    gradient_length = tf.shape(flattened_gradients, name='gradientslength')
+    #   variance_list.append(tf.reshape(g2, [-1]))
+    # vars_concat = tf.concat(variance_list, 0)
+    # flattened_gradients = tf.reshape(vars_concat, [-1], name='gradientprint123')
+    # gradient_length = tf.shape(flattened_gradients, name='gradientslength')
 
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
@@ -590,13 +584,6 @@ class Optimizer(
     # by most optimizers.  It relies on the subclass implementing the following
     # methods: _create_slots(), _prepare(), _apply_dense(), and _apply_sparse().
 
-    # if start_time_op is not None:
-    #   end_time_op = tf.compat.v1.py_func(func = compute_time, inp=[grads_and_vars], Tout=tf.float32)
-    #   end_time_op = tf.reshape(start_time_op, [-1])
-    #   end_time_op = tf.reduce_sum(start_time_op, name='IN_APP_GRAD_SYNC_SAHIL')
-
-    logging.info('@sahiltyagi4 inside the _apply_gradients function called in optimize.py')
-
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
@@ -613,7 +600,6 @@ class Optimizer(
 
     # No DistributionStrategy case.
     logging.info('@sahiltyagi4 in the NO DISTRIBUTION STRATEGY CASE...')
-    # variance_list = []
 
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
     if not grads_and_vars:
@@ -624,7 +610,6 @@ class Optimizer(
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
           g = ops.convert_to_tensor_or_indexed_slices(g)
-          # variance_list.append(tf.reduce_sum(g))
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -634,11 +619,6 @@ class Optimizer(
               "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
       converted_grads_and_vars.append((g, v, p))
-
-    # vars_stack = tf.stack(variance_list, 0)
-    # vars_concat = tf.concat(vars_stack, 0)
-    # test_var2 = tf.assign(tf.get_default_graph().get_tensor_by_name('test1234567:0'),
-    #                       tf.math.reduce_variance(vars_concat), name='pqrstuv1234')
 
     converted_grads_and_vars = tuple(converted_grads_and_vars)
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
