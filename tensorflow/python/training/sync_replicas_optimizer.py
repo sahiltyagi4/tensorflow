@@ -383,6 +383,14 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
                                                             [sync_op])
 
+        variance_list = []
+        for g2 in aggregated_grad:
+          variance_list.append(tf.reshape(g2, [-1]))
+
+        vars_concat = tf.concat(variance_list, 0)
+        flattened_gradients = tf.reshape(vars_concat, [-1])
+        gradient_variance = tf.math.reduce_variance(flattened_gradients, name='variance_aggregated')
+
       for accum, dev in self._accumulator_list:
         with ops.device(dev):
           chief_init_ops.append(
@@ -391,7 +399,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
       self._gradients_applied = True
 
-      return train_op, aggregated_grad
+      return train_op
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
@@ -489,6 +497,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         tokens = array_ops.fill([num_tokens], self._global_step)
         init_tokens = self._sync_token_queue.enqueue_many((tokens,))
     else:
+      logging.info('@sahiltyagi4 set num_tokens to 0')
       init_tokens = control_flow_ops.no_op(name="no_init_tokens")
 
     return init_tokens
