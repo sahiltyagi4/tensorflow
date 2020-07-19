@@ -369,19 +369,30 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           token = sync_token_queue.dequeue()
         train_op = state_ops.assign(self._local_step, token)
 
-        with ops.control_dependencies([update_op]):
-          # Sync_op needs to insert tokens to the token queue at the end of the
-          # step so the replicas can fetch them to start the next step.
-          tokens = array_ops.fill([self._tokens_per_step], global_step)
-          sync_op = sync_token_queue.enqueue_many((tokens,))
+        with ops.control_dependencies([aggregated_grad]):
+          variance_list = []
+          for g2 in aggregated_grad:
+            variance_list.append(tf.reshape(g2, [-1]))
 
-        if self._variable_averages is not None:
-          with ops.control_dependencies([sync_op]), ops.name_scope(""):
-            sync_op = self._variable_averages.apply(
-              self._variables_to_average)
+          vars_concat = tf.concat(variance_list, 0)
+          flattened_gradients = tf.reshape(vars_concat, [-1])
+          gradient_variance = tf.math.reduce_variance(flattened_gradients)
+          var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
 
-        self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                            [sync_op])
+        with ops.control_dependencies([var_assign]):
+          with ops.control_dependencies([update_op]):
+            # Sync_op needs to insert tokens to the token queue at the end of the
+            # step so the replicas can fetch them to start the next step.
+            tokens = array_ops.fill([self._tokens_per_step], global_step)
+            sync_op = sync_token_queue.enqueue_many((tokens,))
+
+          if self._variable_averages is not None:
+            with ops.control_dependencies([sync_op]), ops.name_scope(""):
+              sync_op = self._variable_averages.apply(
+                self._variables_to_average)
+
+          self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
+                                                              [sync_op])
 
       for accum, dev in self._accumulator_list:
         with ops.device(dev):
@@ -390,16 +401,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               global_step, name="SetGlobalStep"))
       self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
       self._gradients_applied = True
-
-      if self._gradients_applied:
-        variance_list = []
-        for g2 in aggregated_grad:
-          variance_list.append(tf.reshape(g2, [-1]))
-
-        vars_concat = tf.concat(variance_list, 0)
-        flattened_gradients = tf.reshape(vars_concat, [-1])
-        gradient_variance = tf.math.reduce_variance(flattened_gradients)
-        var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
 
       return train_op
 
