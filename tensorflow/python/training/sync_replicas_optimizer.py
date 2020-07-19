@@ -369,16 +369,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           token = sync_token_queue.dequeue()
         train_op = state_ops.assign(self._local_step, token)
 
-        with ops.control_dependencies([token]):
-          variance_list = []
-          for g2 in aggregated_grad:
-            variance_list.append(tf.reshape(g2, [-1]))
-
-          vars_concat = tf.concat(variance_list, 0)
-          flattened_gradients = tf.reshape(vars_concat, [-1])
-          gradient_variance = tf.math.reduce_variance(flattened_gradients)
-          tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
-
         with ops.control_dependencies([update_op]):
           # Sync_op needs to insert tokens to the token queue at the end of the
           # step so the replicas can fetch them to start the next step.
@@ -400,6 +390,16 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               global_step, name="SetGlobalStep"))
       self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
       self._gradients_applied = True
+
+      if self._gradients_applied:
+        variance_list = []
+        for g2 in aggregated_grad:
+          variance_list.append(tf.reshape(g2, [-1]))
+
+        vars_concat = tf.concat(variance_list, 0)
+        flattened_gradients = tf.reshape(vars_concat, [-1])
+        gradient_variance = tf.math.reduce_variance(flattened_gradients)
+        var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
 
       return train_op
 
