@@ -369,7 +369,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           token = sync_token_queue.dequeue()
         train_op = state_ops.assign(self._local_step, token)
 
-        with ops.control_dependencies([aggregated_grad]):
+        with ops.control_dependencies([train_ops]):
           variance_list = []
           for g2 in aggregated_grad:
             variance_list.append(tf.reshape(g2, [-1]))
