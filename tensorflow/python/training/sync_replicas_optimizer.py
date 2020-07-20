@@ -371,12 +371,21 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
         with ops.control_dependencies(aggregated_grad):
           variance_list = []
-          for g2 in aggregated_grad:
-            variance_list.append(tf.reshape(g2, [-1]))
+          # for g2 in aggregated_grad:
+          #   # to flatten all gradients
+          #   variance_list.append(tf.reshape(g2, [-1]))
+          #
+          # vars_concat = tf.concat(variance_list, 0)
+          # flattened_gradients = tf.reshape(vars_concat, [-1])
+          # gradient_variance = tf.math.reduce_variance(flattened_gradients)
+          # var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
 
-          vars_concat = tf.concat(variance_list, 0)
-          flattened_gradients = tf.reshape(vars_concat, [-1])
-          gradient_variance = tf.math.reduce_variance(flattened_gradients)
+          for g2 in aggregated_grad:
+            variance_list.append(tf.reduce_sum(g2))
+
+          vars_stack = tf.stack(variance_list, 0)
+          vars_concat = tf.concat(vars_stack, 0, name='gradientprint123')
+          gradient_variance = tf.math.reduce_variance(vars_concat)
           var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
 
         with ops.control_dependencies([var_assign]):
