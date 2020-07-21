@@ -389,7 +389,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # gradient_variance = tf.math.reduce_variance(vars_concat)
           # var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
 
-        with ops.control_dependencies([var_assign]):
+        with ops.control_dependencies([var_assign, B_simple]):
           with ops.control_dependencies([update_op]):
             # Sync_op needs to insert tokens to the token queue at the end of the
             # step so the replicas can fetch them to start the next step.
