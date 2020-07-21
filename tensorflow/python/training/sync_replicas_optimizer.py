@@ -379,7 +379,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           gradient_variance = tf.math.reduce_variance(flattened_gradients)
           var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
           gradient_global_norm = tf.norm(flattened_gradients, ord=2)
-          B_simple = tf.divide(self._sum_of_variances, gradient_global_norm, name='b_simple')
+          B_simple = tf.math.divide(self._sum_of_variances, gradient_global_norm, name='b_simple')
 
           # for g2 in aggregated_grad:
           #   variance_list.append(tf.reduce_sum(g2))
