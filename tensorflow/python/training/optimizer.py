@@ -557,7 +557,7 @@ class Optimizer(
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+  def apply_gradients(self, grads_and_vars, sync_mode=None, global_step=None, name=None):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -600,6 +600,10 @@ class Optimizer(
 
     # No DistributionStrategy case.
     logging.info('@sahiltyagi4 in the NO DISTRIBUTION STRATEGY CASE...')
+    if sync_mode == 'ASP':
+      variance_list = []
+      self._grad_variance = tf.Variable(0.0, trainable=False, name='gradient_variance')
+      self._sum_of_variances = tf.Variable(0.0, trainable=False, name='sum_of_variances')
 
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
     if not grads_and_vars:
@@ -610,6 +614,10 @@ class Optimizer(
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
           g = ops.convert_to_tensor_or_indexed_slices(g)
+          if sync_mode == 'ASP':
+            variance_list.append(tf.reshape(g, [-1]))
+            self._sum_of_variances = tf.math.add(self._sum_of_variances, tf.math.reduce_variance(tf.reshape(g, [-1])))
+
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -665,6 +673,14 @@ class Optimizer(
         train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
         if apply_updates not in train_op:
           train_op.append(apply_updates)
+
+      if sync_mode == 'ASP':
+        vars_concat = tf.concat(variance_list, 0)
+        flattened_gradients = tf.reshape(vars_concat, [-1])
+        gradient_variance = tf.math.reduce_variance(flattened_gradients)
+        var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
+        gradient_global_norm = tf.norm(flattened_gradients, ord=2)
+        B_simple = tf.divide(self._sum_of_variances, gradient_global_norm, name='b_simple')
 
       return apply_updates
 

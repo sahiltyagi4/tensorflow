@@ -236,7 +236,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     """
     return self._opt.compute_gradients(*args, **kwargs)
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+  def apply_gradients(self, grads_and_vars, sync_mode=None, global_step=None, name=None):
     """Apply gradients to variables.
 
     This contains most of the synchronization implementation and also wraps the
@@ -284,11 +284,18 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         name="sync_rep_local_step")
 
       self._grad_variance = variable_scope.variable(
-        initial_value=0.786,
+        initial_value=0.0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=tf.float32,
-        name="agg_grads_variance0")
+        name="gradient_variance")
+
+      self._sum_of_variances = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="sum_of_variances")
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
@@ -329,15 +336,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
-      # for g3 in aggregated_grad:
-      #   if g3 is None:
-      #     logging.info('@sahiltyagi4 aggregated gradient is none!')
-      #   elif isinstance(g3, ops.Tensor):
-      #     logging.info('@sahiltyagi4 aggregated gradient is Tensor')
-      #     logging.info('@sahiltyagi4 shape of g3 is ' + str(g3.shape))
-      #   elif isinstance(g3, ops.IndexedSlices):
-      #     logging.info('@sahiltyagi4 aggregated gradient is IndexSlices')
-
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(""):
         update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
@@ -371,22 +369,25 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
         with ops.control_dependencies(aggregated_grad):
           variance_list = []
-          # for g2 in aggregated_grad:
-          #   # to flatten all gradients
-          #   variance_list.append(tf.reshape(g2, [-1]))
-          #
-          # vars_concat = tf.concat(variance_list, 0)
-          # flattened_gradients = tf.reshape(vars_concat, [-1])
-          # gradient_variance = tf.math.reduce_variance(flattened_gradients)
-          # var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
-
           for g2 in aggregated_grad:
-            variance_list.append(tf.reduce_sum(g2))
+            # to flatten all gradients
+            variance_list.append(tf.reshape(g2, [-1]))
+            self._sum_of_variances = tf.math.add(self._sum_of_variances, tf.math.reduce_variance(tf.reshape(g2, [-1])))
 
-          vars_stack = tf.stack(variance_list, 0)
-          vars_concat = tf.concat(vars_stack, 0, name='gradientprint123')
-          gradient_variance = tf.math.reduce_variance(vars_concat)
+          vars_concat = tf.concat(variance_list, 0)
+          flattened_gradients = tf.reshape(vars_concat, [-1])
+          gradient_variance = tf.math.reduce_variance(flattened_gradients)
           var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
+          gradient_global_norm = tf.norm(flattened_gradients, ord=2)
+          B_simple = tf.divide(self._sum_of_variances, gradient_global_norm, name='b_simple')
+
+          # for g2 in aggregated_grad:
+          #   variance_list.append(tf.reduce_sum(g2))
+          #
+          # vars_stack = tf.stack(variance_list, 0)
+          # vars_concat = tf.concat(vars_stack, 0, name='gradientprint123')
+          # gradient_variance = tf.math.reduce_variance(vars_concat)
+          # var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
 
         with ops.control_dependencies([var_assign]):
           with ops.control_dependencies([update_op]):
