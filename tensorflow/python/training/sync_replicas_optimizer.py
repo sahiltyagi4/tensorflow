@@ -377,23 +377,15 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           vars_concat = tf.concat(variance_list, 0)
           flattened_gradients = tf.reshape(vars_concat, [-1])
-          gradient_variance = tf.math.reduce_variance(flattened_gradients)
-          var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
+          # gradient_variance = tf.math.reduce_variance(flattened_gradients)
+          # var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
 
           sum_grad_component = tf.reduce_sum(grad_component_variance)
           gradient_global_norm = tf.norm(flattened_gradients, ord=2)
           B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
           b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
 
-          # for g2 in aggregated_grad:
-          #   variance_list.append(tf.reduce_sum(g2))
-          #
-          # vars_stack = tf.stack(variance_list, 0)
-          # vars_concat = tf.concat(vars_stack, 0, name='gradientprint123')
-          # gradient_variance = tf.math.reduce_variance(vars_concat)
-          # var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
-
-        with ops.control_dependencies([var_assign, b_simple_assign]):
+        with ops.control_dependencies([b_simple_assign]):
           with ops.control_dependencies([update_op]):
             # Sync_op needs to insert tokens to the token queue at the end of the
             # step so the replicas can fetch them to start the next step.
