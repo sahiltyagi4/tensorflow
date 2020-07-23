@@ -557,7 +557,7 @@ class Optimizer(
         ops.get_default_graph()._is_loss_scaled_by_optimizer = True  # pylint: disable=protected-access
     return loss_value
 
-  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
+  def apply_gradients(self, grads_and_vars, sync_mode=None, global_step=None, name=None):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -600,6 +600,11 @@ class Optimizer(
 
     # No DistributionStrategy case.
     logging.info('@sahiltyagi4 in the NO DISTRIBUTION STRATEGY CASE...')
+    if sync_mode == 'ASP':
+      self._grad_variance = tf.Variable(0.0, trainable=False, name='gradient_variance')
+      self._b_simple = tf.Variable(0.0, trainable=False, name='b_simple')
+      variance_list = []
+      grad_component_variance = []
 
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
     if not grads_and_vars:
@@ -610,6 +615,9 @@ class Optimizer(
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
           g = ops.convert_to_tensor_or_indexed_slices(g)
+          if sync_mode == 'ASP':
+            variance_list.append(tf.reshape(g, [-1]))
+            grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g, [-1])))
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -619,6 +627,14 @@ class Optimizer(
               "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
       converted_grads_and_vars.append((g, v, p))
+
+    if sync_mode == 'ASP':
+      vars_concat = tf.concat(variance_list, 0)
+      flattened_gradients = tf.reshape(vars_concat, [-1])
+      sum_grad_component = tf.reduce_sum(grad_component_variance)
+      gradient_global_norm = tf.norm(flattened_gradients, ord=2)
+      B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
+      b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
 
     converted_grads_and_vars = tuple(converted_grads_and_vars)
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
