@@ -236,7 +236,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     """
     return self._opt.compute_gradients(*args, **kwargs)
 
-  def apply_gradients(self, grads_and_vars, sync_mode=None, global_step=None, name=None):
+  def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.
 
     This contains most of the synchronization implementation and also wraps the
