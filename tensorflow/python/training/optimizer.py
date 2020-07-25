@@ -530,9 +530,10 @@ class Optimizer(
       grads = control_flow_ops.tuple(grads)
 
     # assign the worker local step to current global step
-    local_step_assign = tf.assign(tf.get_default_graph().get_tensor_by_name('current_local_step:0'),
-                                  tf.add(tf.get_default_graph().get_tensor_by_name('current_local_step:0'), 1),
-                                  name='local_step_assign')
+    with ops.control_dependencies(grads):
+      local_step_assign = tf.assign(tf.get_default_graph().get_tensor_by_name('current_local_step:0'),
+                                    tf.add(tf.get_default_graph().get_tensor_by_name('current_local_step:0'), 1),
+                                    name='local_step_assign')
 
     with ops.control_dependencies([local_step_assign]):
       grads_and_vars = list(zip(grads, var_list))
