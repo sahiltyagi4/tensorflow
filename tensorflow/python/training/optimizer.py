@@ -499,6 +499,9 @@ class Optimizer(
 
     # Scale loss if using a "mean" loss reduction and multiple replicas.
     loss = self._scale_loss(loss)
+    self._local_step = variable_scope.variable(initial_value=0,trainable=False,
+                                                  collections=[ops.GraphKeys.LOCAL_VARIABLES],
+                                                  dtype=tf.int64,name="local_step_variable")
 
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
@@ -531,9 +534,7 @@ class Optimizer(
 
     # assign the worker local step to current global step
     with ops.control_dependencies(grads):
-      local_step_assign = tf.assign(tf.get_default_graph().get_tensor_by_name('current_local_step:0'),
-                                    tf.add(tf.get_default_graph().get_tensor_by_name('current_local_step:0'), 1),
-                                    name='local_step_assign')
+      local_step_assign = tf.assign(self._local_step, tf.add(self._local_step, 1), name='local_step_assign')
 
     with ops.control_dependencies([local_step_assign]):
       grads_and_vars = list(zip(grads, var_list))
