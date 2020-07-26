@@ -533,14 +533,19 @@ class Optimizer(
       grads = control_flow_ops.tuple(grads)
 
     # assign the worker local step to current global step
-    with ops.control_dependencies(grads):
-      local_step_assign = tf.assign(self._local_step, tf.add(self._local_step, 1), name='local_step_assign')
+    # with ops.control_dependencies(grads):
+    #   local_step_assign = tf.assign(self._local_step, tf.add(self._local_step, 1), name='local_step_assign')
 
-    with ops.control_dependencies([local_step_assign]):
-      grads_and_vars = list(zip(grads, var_list))
-      self._assert_valid_dtypes(
-        [v for g, v in grads_and_vars
-         if g is not None and v.dtype != dtypes.resource])
+    # with ops.control_dependencies([local_step_assign]):
+    #   grads_and_vars = list(zip(grads, var_list))
+    #   self._assert_valid_dtypes(
+    #     [v for g, v in grads_and_vars
+    #      if g is not None and v.dtype != dtypes.resource])
+
+    grads_and_vars = list(zip(grads, var_list))
+    self._assert_valid_dtypes(
+      [v for g, v in grads_and_vars
+       if g is not None and v.dtype != dtypes.resource])
 
     return grads_and_vars
 
