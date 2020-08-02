@@ -583,9 +583,9 @@ class Optimizer(
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
-    self._b_simple = variable_scope.variable(initial_value=0, trainable=False,
+    self._b_simple = variable_scope.variable(initial_value=0.0, trainable=False,
                                              collections=[ops.GraphKeys.LOCAL_VARIABLES],
-                                             dtype=global_step.dtype.base_dtype,
+                                             dtype=tf.float32,
                                              name="b_simple")
     if distribute_ctx.has_strategy():
       # Handle DistributionStrategy case.
