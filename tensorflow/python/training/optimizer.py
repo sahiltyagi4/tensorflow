@@ -532,16 +532,6 @@ class Optimizer(
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
 
-    # assign the worker local step to current global step
-    # with ops.control_dependencies(grads):
-    #   local_step_assign = tf.assign(self._local_step, tf.add(self._local_step, 1), name='local_step_assign')
-
-    # with ops.control_dependencies([local_step_assign]):
-    #   grads_and_vars = list(zip(grads, var_list))
-    #   self._assert_valid_dtypes(
-    #     [v for g, v in grads_and_vars
-    #      if g is not None and v.dtype != dtypes.resource])
-
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
       [v for g, v in grads_and_vars
@@ -593,6 +583,10 @@ class Optimizer(
     # TODO(isaprykin): Get rid of `has_strategy()` check by
     # always calling _distributed_apply(), using the default distribution
     # as needed.
+    self._b_simple = variable_scope.variable(initial_value=0, trainable=False,
+                                             collections=[ops.GraphKeys.LOCAL_VARIABLES],
+                                             dtype=global_step.dtype.base_dtype,
+                                             name="b_simple")
     if distribute_ctx.has_strategy():
       # Handle DistributionStrategy case.
       logging.info('@sahiltyagi using distribution context has strategy....')
@@ -616,6 +610,8 @@ class Optimizer(
     if not grads_and_vars:
       raise ValueError("No variables provided.")
     converted_grads_and_vars = []
+    variance_list = []
+    grad_component_variance = []
     for g, v in grads_and_vars:
       if g is not None:
         try:
@@ -632,15 +628,16 @@ class Optimizer(
           raise TypeError(
               "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
+      variance_list.append(tf.reshape(g, [-1]))
+      grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g, [-1])))
       converted_grads_and_vars.append((g, v, p))
 
-    # if sync_mode == 'ASP':
-    #   vars_concat = tf.concat(variance_list, 0)
-    #   flattened_gradients = tf.reshape(vars_concat, [-1])
-    #   sum_grad_component = tf.reduce_sum(grad_component_variance)
-    #   gradient_global_norm = tf.norm(flattened_gradients, ord=2)
-    #   B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
-    #   b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
+      vars_concat = tf.concat(variance_list, 0)
+      flattened_gradients = tf.reshape(vars_concat, [-1])
+      sum_grad_component = tf.reduce_sum(grad_component_variance)
+      gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
+      B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
+      b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
 
     converted_grads_and_vars = tuple(converted_grads_and_vars)
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]

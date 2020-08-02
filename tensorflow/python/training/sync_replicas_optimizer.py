@@ -283,20 +283,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
 
-      self._grad_variance = variable_scope.variable(
-        initial_value=0.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="gradient_variance")
-
-      self._b_simple = variable_scope.variable(
-        initial_value=0.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="b_simple")
-
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(
@@ -367,39 +353,19 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           token = sync_token_queue.dequeue()
         train_op = state_ops.assign(self._local_step, token)
 
-        with ops.control_dependencies(aggregated_grad):
-          variance_list = []
-          grad_component_variance = []
-          for g2 in aggregated_grad:
-            # to flatten all gradients
-            variance_list.append(tf.reshape(g2, [-1]))
-            grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g2, [-1])))
+        with ops.control_dependencies([update_op]):
+          # Sync_op needs to insert tokens to the token queue at the end of the
+          # step so the replicas can fetch them to start the next step.
+          tokens = array_ops.fill([self._tokens_per_step], global_step)
+          sync_op = sync_token_queue.enqueue_many((tokens,))
 
-          vars_concat = tf.concat(variance_list, 0)
-          flattened_gradients = tf.reshape(vars_concat, [-1])
-          # gradient_variance = tf.math.reduce_variance(flattened_gradients)
-          # var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
+        if self._variable_averages is not None:
+          with ops.control_dependencies([sync_op]), ops.name_scope(""):
+            sync_op = self._variable_averages.apply(
+              self._variables_to_average)
 
-          sum_grad_component = tf.reduce_sum(grad_component_variance)
-          # going to use ||G^2|| instead of ||G||
-          gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
-          B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
-          b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
-
-        with ops.control_dependencies([b_simple_assign]):
-          with ops.control_dependencies([update_op]):
-            # Sync_op needs to insert tokens to the token queue at the end of the
-            # step so the replicas can fetch them to start the next step.
-            tokens = array_ops.fill([self._tokens_per_step], global_step)
-            sync_op = sync_token_queue.enqueue_many((tokens,))
-
-          if self._variable_averages is not None:
-            with ops.control_dependencies([sync_op]), ops.name_scope(""):
-              sync_op = self._variable_averages.apply(
-                self._variables_to_average)
-
-          self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                              [sync_op])
+        self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
+                                                            [sync_op])
 
       for accum, dev in self._accumulator_list:
         with ops.device(dev):
