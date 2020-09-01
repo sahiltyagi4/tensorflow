@@ -632,12 +632,12 @@ class Optimizer(
       grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g, [-1])))
       converted_grads_and_vars.append((g, v, p))
 
-      vars_concat = tf.concat(variance_list, 0)
-      flattened_gradients = tf.reshape(vars_concat, [-1])
-      sum_grad_component = tf.reduce_sum(grad_component_variance)
-      gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
-      B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
-      b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
+    vars_concat = tf.concat(variance_list, 0)
+    flattened_gradients = tf.reshape(vars_concat, [-1])
+    sum_grad_component = tf.reduce_sum(grad_component_variance)
+    gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
+    B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
+    b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
 
     converted_grads_and_vars = tuple(converted_grads_and_vars)
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
