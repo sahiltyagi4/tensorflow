@@ -22,6 +22,7 @@ import csv
 import functools
 
 import numpy as np
+import tensorflow as tf
 
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import batching
@@ -309,7 +310,7 @@ def make_tf_record_dataset(file_pattern,
     return dataset.prefetch(buffer_size=prefetch_buffer_size)
 
 
-@tf_export("data.experimental.make_csv_dataset", v1=[])
+@tf_export("tf.compat.v1.data.experimental.make_csv_dataset", v1=[])
 def make_csv_dataset_v2(
     file_pattern,
     batch_size,
@@ -517,7 +518,7 @@ def make_csv_dataset_v2(
   return dataset
 
 
-@tf_export(v1=["data.experimental.make_csv_dataset"])
+@tf_export(v1=["tf.compat.v1.data.experimental.make_csv_dataset"])
 def make_csv_dataset_v1(
     file_pattern,
     batch_size,
@@ -552,7 +553,7 @@ make_csv_dataset_v1.__doc__ = make_csv_dataset_v2.__doc__
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 4 * 1024 * 1024  # 4 MB
 
 
-@tf_export("data.experimental.CsvDataset", v1=[])
+@tf_export("tf.compat.v1.data.experimental.CsvDataset", v1=[])
 class CsvDatasetV2(dataset_ops.DatasetSource):
   """A Dataset comprising lines from one or more CSV files."""
 
@@ -673,7 +674,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
           record_defaults=self._record_defaults,
           buffer_size=self._buffer_size,
           header=self._header,
-          #output_shapes=self._flat_shapes,
+          output_shapes=self._flat_shapes,
           field_delim=self._field_delim,
           use_quote_delim=self._use_quote_delim,
           na_value=self._na_value,
@@ -685,7 +686,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
           record_defaults=self._record_defaults,
           buffer_size=self._buffer_size,
           header=self._header,
-          #output_shapes=self._flat_shapes,
+          output_shapes=self._flat_shapes,
           field_delim=self._field_delim,
           use_quote_delim=self._use_quote_delim,
           na_value=self._na_value,
@@ -698,7 +699,7 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     return self._structure
 
 
-@tf_export(v1=["data.experimental.CsvDataset"])
+@tf_export(v1=["tf.compat.v1.data.experimental.CsvDataset"])
 class CsvDatasetV1(dataset_ops.DatasetV1Adapter):
   """A Dataset comprising lines from one or more CSV files."""
 
@@ -719,7 +720,7 @@ class CsvDatasetV1(dataset_ops.DatasetV1Adapter):
     super(CsvDatasetV1, self).__init__(wrapped)
 
 
-@tf_export("data.experimental.make_batched_features_dataset", v1=[])
+@tf_export("tf.compat.v1.data.experimental.make_batched_features_dataset", v1=[])
 def make_batched_features_dataset_v2(file_pattern,
                                      batch_size,
                                      features,
@@ -881,7 +882,7 @@ def make_batched_features_dataset_v2(file_pattern,
   return dataset
 
 
-@tf_export(v1=["data.experimental.make_batched_features_dataset"])
+@tf_export(v1=["tf.compat.v1.data.experimental.make_batched_features_dataset"])
 def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-docstring
                                      batch_size,
                                      features,
@@ -937,7 +938,7 @@ def _get_file_names(file_pattern, shuffle):
   return file_names
 
 
-@tf_export("data.experimental.SqlDataset", v1=[])
+@tf_export("tf.compat.v1.data.experimental.SqlDataset", v1=[])
 class SqlDatasetV2(dataset_ops.DatasetSource):
   """A `Dataset` consisting of the results from a SQL query."""
 
@@ -991,7 +992,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
     return self._structure
 
 
-@tf_export(v1=["data.experimental.SqlDataset"])
+@tf_export(v1=["tf.compat.v1.data.experimental.SqlDataset"])
 class SqlDatasetV1(dataset_ops.DatasetV1Adapter):
   """A `Dataset` consisting of the results from a SQL query."""
 
