@@ -639,53 +639,54 @@ class Optimizer(
     B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
     b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
 
-    converted_grads_and_vars = tuple(converted_grads_and_vars)
-    var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
-    if not var_list:
-      raise ValueError("No gradients provided for any variable: %s." %
-                       ([str(v) for _, v, _ in converted_grads_and_vars],))
-    with ops.init_scope():
-      self._create_slots(var_list)
-    update_ops = []
-    with ops.name_scope(name, self._name) as name:
-      self._prepare()
-      for grad, var, processor in converted_grads_and_vars:
-        if grad is None:
-          continue
-        # We colocate all ops created in _apply_dense or _apply_sparse
-        # on the same device as the variable.
-        # TODO(apassos): figure out how to get the variable name here.
-        if context.executing_eagerly() or isinstance(
-            var,
-            resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
-          scope_name = ""
+    with ops.control_dependencies([b_simple_assign]):
+      converted_grads_and_vars = tuple(converted_grads_and_vars)
+      var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
+      if not var_list:
+        raise ValueError("No gradients provided for any variable: %s." %
+                         ([str(v) for _, v, _ in converted_grads_and_vars],))
+      with ops.init_scope():
+        self._create_slots(var_list)
+      update_ops = []
+      with ops.name_scope(name, self._name) as name:
+        self._prepare()
+        for grad, var, processor in converted_grads_and_vars:
+          if grad is None:
+            continue
+          # We colocate all ops created in _apply_dense or _apply_sparse
+          # on the same device as the variable.
+          # TODO(apassos): figure out how to get the variable name here.
+          if context.executing_eagerly() or isinstance(
+                  var,
+                  resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
+            scope_name = ""
+          else:
+            scope_name = var.op.name
+          with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
+            update_ops.append(processor.update_op(self, grad))
+        if global_step is None:
+          apply_updates = self._finish(update_ops, name)
         else:
-          scope_name = var.op.name
-        with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
-          update_ops.append(processor.update_op(self, grad))
-      if global_step is None:
-        apply_updates = self._finish(update_ops, name)
-      else:
-        with ops.control_dependencies([self._finish(update_ops, "update")]):
-          with ops.colocate_with(global_step):
-            if isinstance(global_step, resource_variable_ops.ResourceVariable):
-              # TODO(apassos): the implicit read in assign_add is slow; consider
-              # making it less so.
-              apply_updates = resource_variable_ops.assign_add_variable_op(
+          with ops.control_dependencies([self._finish(update_ops, "update")]):
+            with ops.colocate_with(global_step):
+              if isinstance(global_step, resource_variable_ops.ResourceVariable):
+                # TODO(apassos): the implicit read in assign_add is slow; consider
+                # making it less so.
+                apply_updates = resource_variable_ops.assign_add_variable_op(
                   global_step.handle,
                   ops.convert_to_tensor(1, dtype=global_step.dtype),
                   name=name)
-            else:
-              apply_updates = state_ops.assign_add(global_step, 1, name=name)
+              else:
+                apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
-      if not context.executing_eagerly():
-        if isinstance(apply_updates, ops.Tensor):
-          apply_updates = apply_updates.op
-        train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-        if apply_updates not in train_op:
-          train_op.append(apply_updates)
+        if not context.executing_eagerly():
+          if isinstance(apply_updates, ops.Tensor):
+            apply_updates = apply_updates.op
+          train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+          if apply_updates not in train_op:
+            train_op.append(apply_updates)
 
-      return apply_updates
+        return apply_updates
 
   def _distributed_apply(self,
                          distribution,
