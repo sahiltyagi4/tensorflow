@@ -600,11 +600,6 @@ class Optimizer(
 
     # No DistributionStrategy case.
     logging.info('@sahiltyagi4 in the NO DISTRIBUTION STRATEGY CASE...')
-    # if sync_mode == 'ASP':
-    #   self._grad_variance = tf.Variable(0.0, trainable=False, name='gradient_variance')
-    #   self._b_simple = tf.Variable(0.0, trainable=False, name='b_simple')
-    #   variance_list = []
-    #   grad_component_variance = []
 
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
     if not grads_and_vars:
@@ -617,6 +612,7 @@ class Optimizer(
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
           g = ops.convert_to_tensor_or_indexed_slices(g)
+          logging.info('@sahiltyagi4 gradient shape is ' + str(tf.shape(g)))
           # if sync_mode == 'ASP':
           #   variance_list.append(tf.reshape(g, [-1]))
           #   grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g, [-1])))
