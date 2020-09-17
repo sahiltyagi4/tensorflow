@@ -632,12 +632,33 @@ class Optimizer(
       grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g, [-1])))
       converted_grads_and_vars.append((g, v, p))
 
+    # without using McCandlish appendix A.1
+    # vars_concat = tf.concat(variance_list, 0)
+    # flattened_gradients = tf.reshape(vars_concat, [-1])
+    # sum_grad_component = tf.reduce_sum(grad_component_variance)
+    # gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
+    # B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
+    # b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
+
+    tf_config = json.loads(os.environ['TF_CONFIG'])
+    batchlist = tf_config['batch_size_list']
+    tasktype = tf_config['task']['type']
+    index = tf_config['task']['index']
+    if tasktype == 'ps':
+      node_batch_size = batchlist[0]
+    if tasktype == 'master':
+      node_batch_size = batchlist[1]
+    if tasktype == 'worker':
+      node_batch_size = batchlist[index + 2]
+
     vars_concat = tf.concat(variance_list, 0)
     flattened_gradients = tf.reshape(vars_concat, [-1])
     sum_grad_component = tf.reduce_sum(grad_component_variance)
+    # going to use ||G^2|| instead of ||G||
     gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
-    B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
-    b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
+    term1 = tf.math.divide(sum_grad_component, node_batch_size)
+    final_bnoise = tf.math.add(gradient_global_norm, term1)
+    b_simple_assign = tf.assign(self._b_simple, final_bnoise, name='b_simple_assign')
 
     with ops.control_dependencies([b_simple_assign]):
       converted_grads_and_vars = tuple(converted_grads_and_vars)
