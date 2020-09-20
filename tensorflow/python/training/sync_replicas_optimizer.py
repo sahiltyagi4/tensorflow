@@ -426,7 +426,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           ## calculating variance by calculating variance of individual variances rather than flattening all gradient
           ## in a single 1D tensor. trying to estimate noise scale with this different approach.
-          concat_all_grad_variances = tf.concat(grad_component_variance, 0)
+          concat_all_grad_variances = tf.stack(grad_component_variance, 0)
           # contains all variances in 1D tensor
           flatten_individual_variances = tf.reshape(concat_all_grad_variances, [-1])
           variance_global_norm = tf.math.square(tf.norm(flatten_individual_variances, ord=2))
