@@ -316,6 +316,21 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=tf.float32,
         name="estimated_gradient_norm")
 
+      # for calculating variances of variances
+      self._b_simple2 = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="b_simple2")
+
+      self._expected_grad_norm2 = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="estimated_gradient_norm2")
+
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(
@@ -409,10 +424,20 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
           b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
 
-          # gradient_variance = tf.math.reduce_variance(flattened_gradients)
-          # var_assign = tf.assign(self._grad_variance, gradient_variance, name='variance_aggregated')
+          ## calculating variance by calculating variance of individual variances rather than flattening all gradient
+          ## in a single 1D tensor. trying to estimate noise scale with this different approach.
+          concat_all_grad_variances = tf.concat(grad_component_variance, 0)
+          # contains all variances in 1D tensor
+          flatten_individual_variances = tf.reshape(concat_all_grad_variances, [-1])
+          variance_global_norm = tf.math.square(tf.norm(flatten_individual_variances, ord=2))
+          estimated_gradient_norm_val2 = tf.math.add(variance_global_norm, term1)
+          estimated_gradient_norm_assign2 = tf.assign(self._expected_grad_norm2, estimated_gradient_norm_val2,
+                                                     name='estimated_gradient_norm_assign2')
+          B_simple2 = tf.math.divide(sum_grad_component, variance_global_norm)
+          b_simple_assign2 = tf.assign(self._b_simple2, B_simple2, name='b_simple_assign2')
 
-        with ops.control_dependencies([b_simple_assign, estimated_gradient_norm_assign]):
+        with ops.control_dependencies([b_simple_assign, estimated_gradient_norm_assign, b_simple_assign2,
+                                       estimated_gradient_norm_assign2]):
           with ops.control_dependencies([update_op]):
             # Sync_op needs to insert tokens to the token queue at the end of the
             # step so the replicas can fetch them to start the next step.
