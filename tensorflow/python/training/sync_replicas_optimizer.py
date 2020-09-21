@@ -416,7 +416,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # going to use ||G^2|| instead of ||G||
           gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
 
-          term1 = tf.math.divide(sum_grad_component, node_batch_size)
+          term1 = tf.math.divide(sum_grad_component, node_batch_size*3)
           estimated_gradient_norm_val = tf.math.add(gradient_global_norm, term1)
           estimated_gradient_norm_assign = tf.assign(self._expected_grad_norm, estimated_gradient_norm_val,
                                                      name='estimated_gradient_norm_assign')

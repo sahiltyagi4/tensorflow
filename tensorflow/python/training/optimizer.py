@@ -471,6 +471,32 @@ class Optimizer(
     @end_compatibility
     """
 
+    tf_config = json.loads(os.environ['TF_CONFIG'])
+    batchlist = tf_config['batch_size_list']
+    tasktype = tf_config['task']['type']
+    num_ps = int(len(tf_config['cluster']['ps']))
+    index = tf_config['task']['index']
+    if tasktype == 'ps':
+      node_batch_size = int(batchlist[0])
+    if tasktype == 'master':
+      node_batch_size = int(batchlist[1])
+    if tasktype == 'worker':
+      node_batch_size = int(batchlist[index + 2])
+
+    self._b_simple_opt = variable_scope.variable(
+      initial_value=0.0,
+      trainable=False,
+      collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      dtype=tf.float32,
+      name="b_simple_opt")
+
+    self._expected_grad_opt_norm = variable_scope.variable(
+      initial_value=0.0,
+      trainable=False,
+      collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      dtype=tf.float32,
+      name="estimated_gradient_opt_norm")
+
     if callable(loss):
       with backprop.GradientTape() as tape:
         if var_list is not None:
@@ -499,9 +525,6 @@ class Optimizer(
 
     # Scale loss if using a "mean" loss reduction and multiple replicas.
     loss = self._scale_loss(loss)
-    self._local_step = variable_scope.variable(initial_value=0,trainable=False,
-                                                  collections=[ops.GraphKeys.LOCAL_VARIABLES],
-                                                  dtype=tf.int64,name="local_step_variable")
 
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
@@ -532,22 +555,33 @@ class Optimizer(
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
 
-    # assign the worker local step to current global step
-    # with ops.control_dependencies(grads):
-    #   local_step_assign = tf.assign(self._local_step, tf.add(self._local_step, 1), name='local_step_assign')
+    with ops.control_dependencies(grads):
+      variance_list = []
+      grad_component_variance = []
+      for g2 in grads:
+        variance_list.append(tf.reshape(g2, [-1]))
+        grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g2, [-1])))
 
-    # with ops.control_dependencies([local_step_assign]):
-    #   grads_and_vars = list(zip(grads, var_list))
-    #   self._assert_valid_dtypes(
-    #     [v for g, v in grads_and_vars
-    #      if g is not None and v.dtype != dtypes.resource])
+      vars_concat = tf.concat(variance_list, 0)
+      flattened_gradients = tf.reshape(vars_concat, [-1])
+      sum_grad_component = tf.reduce_sum(grad_component_variance)
+      gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
 
-    grads_and_vars = list(zip(grads, var_list))
-    self._assert_valid_dtypes(
-      [v for g, v in grads_and_vars
-       if g is not None and v.dtype != dtypes.resource])
+      term1 = tf.math.divide(sum_grad_component, node_batch_size)
+      estimated_gradient_norm_opt_val = tf.math.add(gradient_global_norm, term1)
+      estimated_gradient_norm_opt_assign = tf.assign(self._expected_grad_opt_norm, estimated_gradient_norm_opt_val,
+                                                 name='estimated_gradient_norm_opt_assign')
 
-    return grads_and_vars
+      B_simple_opt = tf.math.divide(sum_grad_component, gradient_global_norm)
+      b_simple_opt_assign = tf.assign(self._b_simple_opt, B_simple_opt, name='b_simple_opt_assign')
+
+      with ops.control_dependencies([estimated_gradient_norm_opt_assign, b_simple_opt_assign]):
+        grads_and_vars = list(zip(grads, var_list))
+        self._assert_valid_dtypes(
+          [v for g, v in grads_and_vars
+           if g is not None and v.dtype != dtypes.resource])
+
+        return grads_and_vars
 
   @staticmethod
   def _scale_loss(loss_value):
