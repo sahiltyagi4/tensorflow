@@ -295,13 +295,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=global_step.dtype.base_dtype,
         name="sync_rep_local_step")
 
-      self._grad_variance = variable_scope.variable(
-        initial_value=0.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="gradient_variance")
-
       self._b_simple = variable_scope.variable(
         initial_value=0.0,
         trainable=False,
@@ -315,6 +308,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=tf.float32,
         name="estimated_gradient_norm")
+
+      self._grad_global_norm = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="gradient_global_norm")
 
       # for calculating variances of variances
       self._b_simple2 = variable_scope.variable(
@@ -416,6 +416,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # going to use ||G^2|| instead of ||G||
           gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
 
+          global_norm_assign = tf.assign(self._grad_global_norm, gradient_global_norm, name='global_norm_assign')
+
           term1 = tf.math.divide(sum_grad_component, node_batch_size*3)
           estimated_gradient_norm_val = tf.math.add(gradient_global_norm, term1)
           estimated_gradient_norm_assign = tf.assign(self._expected_grad_norm, estimated_gradient_norm_val,
@@ -426,18 +428,19 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           ## calculating variance by calculating variance of individual variances rather than flattening all gradient
           ## in a single 1D tensor. trying to estimate noise scale with this different approach.
-          concat_all_grad_variances = tf.stack(grad_component_variance, 0)
+          #concat_all_grad_variances = tf.stack(grad_component_variance, 0)
           # contains all variances in 1D tensor
-          flatten_individual_variances = tf.reshape(concat_all_grad_variances, [-1])
-          variance_global_norm = tf.math.square(tf.norm(flatten_individual_variances, ord=2))
-          estimated_gradient_norm_val2 = tf.math.add(variance_global_norm, term1)
-          estimated_gradient_norm_assign2 = tf.assign(self._expected_grad_norm2, estimated_gradient_norm_val2,
-                                                     name='estimated_gradient_norm_assign2')
-          B_simple2 = tf.math.divide(sum_grad_component, variance_global_norm)
-          b_simple_assign2 = tf.assign(self._b_simple2, B_simple2, name='b_simple_assign2')
+          # flatten_individual_variances = tf.reshape(concat_all_grad_variances, [-1])
+          # variance_global_norm = tf.math.square(tf.norm(flatten_individual_variances, ord=2))
+          # estimated_gradient_norm_val2 = tf.math.add(variance_global_norm, term1)
+          # estimated_gradient_norm_assign2 = tf.assign(self._expected_grad_norm2, estimated_gradient_norm_val2,
+          #                                            name='estimated_gradient_norm_assign2')
+          # B_simple2 = tf.math.divide(sum_grad_component, variance_global_norm)
+          # b_simple_assign2 = tf.assign(self._b_simple2, B_simple2, name='b_simple_assign2')
 
-        with ops.control_dependencies([b_simple_assign, estimated_gradient_norm_assign, b_simple_assign2,
-                                       estimated_gradient_norm_assign2]):
+        # with ops.control_dependencies([b_simple_assign, estimated_gradient_norm_assign, b_simple_assign2,
+        #                                estimated_gradient_norm_assign2, global_norm_assign]):
+        with ops.control_dependencies([b_simple_assign, estimated_gradient_norm_assign, global_norm_assign]):
           with ops.control_dependencies([update_op]):
             # Sync_op needs to insert tokens to the token queue at the end of the
             # step so the replicas can fetch them to start the next step.

@@ -567,10 +567,10 @@ class Optimizer(
       sum_grad_component = tf.reduce_sum(grad_component_variance)
       gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
 
-      term1 = tf.math.divide(sum_grad_component, node_batch_size)
-      estimated_gradient_norm_opt_val = tf.math.add(gradient_global_norm, term1)
+      opt_term1 = tf.math.divide(sum_grad_component, node_batch_size)
+      estimated_gradient_norm_opt_val = tf.math.add(gradient_global_norm, opt_term1)
       estimated_gradient_norm_opt_assign = tf.assign(self._expected_grad_opt_norm, estimated_gradient_norm_opt_val,
-                                                 name='estimated_gradient_norm_opt_assign')
+                                                     name='estimated_gradient_norm_opt_assign')
 
       B_simple_opt = tf.math.divide(sum_grad_component, gradient_global_norm)
       b_simple_opt_assign = tf.assign(self._b_simple_opt, B_simple_opt, name='b_simple_opt_assign')
