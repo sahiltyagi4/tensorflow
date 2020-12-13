@@ -413,6 +413,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           flattened_gradients = tf.reshape(vars_concat, [-1])
 
           sum_grad_component = tf.reduce_sum(grad_component_variance)
+          overall_gradient_variance = tf.math.reduce_variance(flattened_gradients)
           # going to use ||G^2|| instead of ||G||
           gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
 
