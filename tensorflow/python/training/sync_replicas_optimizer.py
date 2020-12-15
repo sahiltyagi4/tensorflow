@@ -409,6 +409,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # these two are just assign ops to assign the computed values to the designated variable of variance and norm
           # these two assign ops are then used as a control dependency as seen immediately after these ops. this makes
           # sure that we proceed to the next iteration only once these values have been computed correctly.
+          #ALSO, AS IN THE ADASCALE PAPER, THE GAIN RATIO USES TWO VALUES sigma^2 and mew^2: THESE ARE THOSE VALUES
           gradient_norm_assign = tf.assign(self._gradient_globalnorm, gradient_global_norm, name='global_norm_assign')
           gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
                                                name='global_gradient_variance')
