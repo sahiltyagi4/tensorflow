@@ -403,7 +403,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           #using the flattened gradient values from every layer of the model into a single vector, compute the variance
           overall_gradient_variance = tf.math.reduce_variance(flattened_gradients)
           # computes the gradient norm with order of 2
-          #NEW EDIT: this value is actually norm squared, ie., |G|^2 instead of just |G|.
+          #this value is actually norm squared, ie., |G|^2 instead of just |G|.
           gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
 
           # these two are just assign ops to assign the computed values to the designated variable of variance and norm
