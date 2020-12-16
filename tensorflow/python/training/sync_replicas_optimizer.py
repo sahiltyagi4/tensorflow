@@ -380,42 +380,33 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         train_op = state_ops.assign(self._local_step, token)
 
         with ops.control_dependencies(aggregated_grad):
-          # these computations are executed only after the aggregated gradients have been computed. as seen above,
-          # I've added a control dependency on 'aggregated_grad' op of the tf graph. Thus, the following computations
-          # occur only once the gradients from the workers have been combined
-          gradient_list = []
-          for g2 in aggregated_grad:
-            #NOTE: the computation for variance and norm below happens in the model fn as well right after the
-            # compute_gradients(..) call AT EVERY WORKER. this below happens after apply_gradients(..) call when all
-            # worker updates are synchronized into a global update
-            # these are the gradients aggregated among all the workers
-            # this 'gradient_list' list holds the gradient from the gradients tensor returned by apply_gradients.
-            # each element in the list 'gradient_list' contains a flattened 1D tensor of the gradient for every
-            # corresponding fully-connected or convolutional layer
-            gradient_list.append(tf.reshape(g2, [-1]))
+          worker_gradient,_ = list(zip(*grads_and_vars))
+          # squares every element of the per-worker multidimesional tensor. eg [[g11,g12], [g21,g22]]
+          # returns [[g11^2, g12^2], [g21^2, g22^2]]
+          worker_square_grad = [tf.square(wg) for wg in worker_gradient]
+          # squares elements of the aggregated gradients from the workers. eg. call it [[G11,G12],[G21,G22]]
+          # returns  [[G11^2, G12^2], [G21^2, G22^2]]
+          aggregated_square_grad = [tf.square(ag) for ag in aggregated_grad]
+          # does an element-wise squared difference of the gradients]
+          # returns [[(g11^2 - G11^2), (g12^2 - G12^2)], [(g21^2 - G21^2), (g22^2 - G22^2)]]
+          gradient_variances = [squared_grad - gx for squared_grad, gx in zip(worker_square_grad,
+                                                                              aggregated_square_grad)]
+          variances = [tf.norm(grad_variance) for grad_variance in gradient_variances]
+          sum_variance = tf.reduce_sum(variances)
+          variance_assign = tf.assign(self._gradient_variance, sum_variance, name='global_gradient_variance')
 
-          # concat takes flattened tensor from each layer (which is a single element at a given index in gradient_list)
-          # and puts all the gradient (from every layer) into a single 1D tensor
-          vars_concat = tf.concat(gradient_list, 0)
-          # giving the shape of a 1D tensor
-          flattened_gradients = tf.reshape(vars_concat, [-1])
+          # below op flattens the tensors tensors. for example, 'aggregated_grad' is a list with the following:
+          # [[g11,g12], [g21,g22]], where [g11,g12] are the gradients for one layer and [g21,g22] are gradients for
+          # the next layer. inner 'reshape' op flattens [g11,g12] to a 1D vector (g11,g12), and 'concat' op takes the
+          # two 1D vectors (g11,g12) and (g21,g22) to a single 1D vector (g11,g12,g21,g22) ---> THIS IS ESSENTIALLY
+          # THAT flattened_gradients that you've seen before
+          agg_grad_norm = tf.concat([tf.reshape(ix, [-1]) for ix in aggregated_grad], -1)
+          # calculates the norm squared, i.e., {sqrt(g11^2 + g12^2 + g21^2 + g22^2)}^2
+          agg_grad_norm = tf.square(tf.norm(agg_grad_norm))
+          # assign op to put the norm squared value in the designated variable
+          norm_assign = tf.assign(self._gradient_globalnorm, agg_grad_norm, name='global_norm_assign')
 
-          #using the flattened gradient values from every layer of the model into a single vector, compute the variance
-          overall_gradient_variance = tf.math.reduce_variance(flattened_gradients)
-          # computes the gradient norm with order of 2
-          #this value is actually norm squared, ie., |G|^2 instead of just |G|.
-          gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
-
-          # these two are just assign ops to assign the computed values to the designated variable of variance and norm
-          # these two assign ops are then used as a control dependency as seen immediately after these ops. this makes
-          # sure that we proceed to the next iteration only once these values have been computed correctly.
-          # ALSO, AS IN THE ADASCALE PAPER, THE GAIN RATIO USES TWO VALUES sigma^2 and mew^2: THESE ARE THOSE VALUES
-          # sigma^2 = overall_gradient_variance and mew^2 = |G|^2 = gradient_global_norm
-          gradient_norm_assign = tf.assign(self._gradient_globalnorm, gradient_global_norm, name='global_norm_assign')
-          gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
-                                               name='global_gradient_variance')
-
-        with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign]):
+        with ops.control_dependencies([norm_assign, variance_assign]):
           with ops.control_dependencies([update_op]):
             # Sync_op needs to insert tokens to the token queue at the end of the
             # step so the replicas can fetch them to start the next step.
