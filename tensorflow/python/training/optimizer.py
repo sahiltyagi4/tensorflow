@@ -599,7 +599,7 @@ class Optimizer(
       # b_simple_opt_assign = tf.assign(self._b_simple_opt, B_simple_opt, name='b_simple_opt_assign')
 
       #with ops.control_dependencies([estimated_gradient_norm_opt_assign, b_simple_opt_assign]):
-      with ops.control_dependencies(cg_norm_assign):
+      with ops.control_dependencies([cg_norm_assign]):
         grads_and_vars = list(zip(grads, var_list))
         self._assert_valid_dtypes(
           [v for g, v in grads_and_vars
