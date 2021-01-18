@@ -483,6 +483,14 @@ class Optimizer(
     if tasktype == 'worker':
       node_batch_size = int(batchlist[index + 2])
 
+    worker_name = tasktype + '-' + str(index)
+    if worker_name == 'master-0':
+      device_name = '/job:master/task:0/device:CPU:0'
+    elif worker_name == 'worker-0':
+      device_name = '/job:worker/task:0/device:CPU:0'
+    elif worker_name == 'worker-1':
+      device_name = '/job:worker/task:1/device:CPU:0'
+
     self._b_simple_opt = variable_scope.variable(
       initial_value=0.0,
       trainable=False,
@@ -496,6 +504,14 @@ class Optimizer(
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
       dtype=tf.float32,
       name="estimated_gradient_opt_norm")
+
+    with tf.device(device_name):
+      self._cg_gradnorm = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name=worker_name+'_cg_gradnorm')
 
     if callable(loss):
       with backprop.GradientTape() as tape:
@@ -556,26 +572,34 @@ class Optimizer(
       grads = control_flow_ops.tuple(grads)
 
     with ops.control_dependencies(grads):
-      variance_list = []
-      grad_component_variance = []
-      for g2 in grads:
-        variance_list.append(tf.reshape(g2, [-1]))
-        grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g2, [-1])))
+      with tf.device(device_name):
+        cg_allgrads = [tf.reshape(g1, [-1]) for g1 in grads]
+        cg_concat = tf.concat(cg_allgrads, 0, name=worker_name+'_cg_concat')
+        cg_flatten = tf.reshape(cg_concat, [-1], name=worker_name+'_cg_flatten')
+        cg_g2norm = tf.math.square(tf.norm(cg_flatten, ord=2))
+        cg_norm_assign = tf.assign(self._cg_gradnorm, cg_g2norm, name=worker_name+'_cg_normassign')
 
-      vars_concat = tf.concat(variance_list, 0)
-      flattened_gradients = tf.reshape(vars_concat, [-1])
-      sum_grad_component = tf.reduce_sum(grad_component_variance)
-      gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
+      # variance_list = []
+      # grad_component_variance = []
+      # for g2 in grads:
+      #   variance_list.append(tf.reshape(g2, [-1]))
+      #   grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g2, [-1])))
+      #
+      # vars_concat = tf.concat(variance_list, 0)
+      # flattened_gradients = tf.reshape(vars_concat, [-1])
+      # sum_grad_component = tf.reduce_sum(grad_component_variance)
+      # gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
+      #
+      # opt_term1 = tf.math.divide(sum_grad_component, node_batch_size)
+      # estimated_gradient_norm_opt_val = tf.math.add(gradient_global_norm, opt_term1)
+      # estimated_gradient_norm_opt_assign = tf.assign(self._expected_grad_opt_norm, estimated_gradient_norm_opt_val,
+      #                                                name='estimated_gradient_norm_opt_assign')
+      #
+      # B_simple_opt = tf.math.divide(sum_grad_component, gradient_global_norm)
+      # b_simple_opt_assign = tf.assign(self._b_simple_opt, B_simple_opt, name='b_simple_opt_assign')
 
-      opt_term1 = tf.math.divide(sum_grad_component, node_batch_size)
-      estimated_gradient_norm_opt_val = tf.math.add(gradient_global_norm, opt_term1)
-      estimated_gradient_norm_opt_assign = tf.assign(self._expected_grad_opt_norm, estimated_gradient_norm_opt_val,
-                                                     name='estimated_gradient_norm_opt_assign')
-
-      B_simple_opt = tf.math.divide(sum_grad_component, gradient_global_norm)
-      b_simple_opt_assign = tf.assign(self._b_simple_opt, B_simple_opt, name='b_simple_opt_assign')
-
-      with ops.control_dependencies([estimated_gradient_norm_opt_assign, b_simple_opt_assign]):
+      #with ops.control_dependencies([estimated_gradient_norm_opt_assign, b_simple_opt_assign]):
+      with ops.control_dependencies(cg_norm_assign):
         grads_and_vars = list(zip(grads, var_list))
         self._assert_valid_dtypes(
           [v for g, v in grads_and_vars
