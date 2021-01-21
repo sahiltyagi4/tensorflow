@@ -471,35 +471,6 @@ class Optimizer(
     @end_compatibility
     """
 
-    # tf_config = json.loads(os.environ['TF_CONFIG'])
-    # batchlist = tf_config['batch_size_list']
-    # tasktype = tf_config['task']['type']
-    # num_ps = int(len(tf_config['cluster']['ps']))
-    # index = tf_config['task']['index']
-    # if tasktype == 'ps':
-    #   node_batch_size = int(batchlist[0])
-    # if tasktype == 'master':
-    #   node_batch_size = int(batchlist[1])
-    # if tasktype == 'worker':
-    #   node_batch_size = int(batchlist[index + 2])
-    #
-    # worker_name = tasktype + '-' + str(index)
-    # if worker_name == 'master-0':
-    #   device_name = '/job:master/task:0/device:CPU:0'
-    # elif worker_name == 'worker-0':
-    #   device_name = '/job:worker/task:0/device:CPU:0'
-    # elif worker_name == 'worker-1':
-    #   device_name = '/job:worker/task:1/device:CPU:0'
-    #
-    #
-    # with tf.device(device_name):
-    #   self._cg_gradnorm = variable_scope.variable(
-    #     initial_value=0.0,
-    #     trainable=False,
-    #     collections=[ops.GraphKeys.LOCAL_VARIABLES],
-    #     dtype=tf.float32,
-    #     name=worker_name+'_cg_gradnorm')
-
     if callable(loss):
       with backprop.GradientTape() as tape:
         if var_list is not None:
@@ -558,22 +529,6 @@ class Optimizer(
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
 
-    # with ops.control_dependencies(grads):
-    #   with tf.device(device_name):
-    #     cg_allgrads = [tf.reshape(g1, [-1]) for g1 in grads]
-    #     cg_concat = tf.concat(cg_allgrads, 0, name=worker_name+'_cg_concat')
-    #     cg_flatten = tf.reshape(cg_concat, [-1], name=worker_name+'_cg_flatten')
-    #     cg_g2norm = tf.math.square(tf.norm(cg_flatten, ord=2))
-    #     cg_norm_assign = tf.assign(self._cg_gradnorm, cg_g2norm, name=worker_name+'_cg_normassign')
-    #
-    #   with ops.control_dependencies([cg_norm_assign]):
-    #     grads_and_vars = list(zip(grads, var_list))
-    #     self._assert_valid_dtypes(
-    #       [v for g, v in grads_and_vars
-    #        if g is not None and v.dtype != dtypes.resource])
-    #
-    #     return grads_and_vars
-
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
       [v for g, v in grads_and_vars
@@ -583,7 +538,7 @@ class Optimizer(
 
   @staticmethod
   def _scale_loss(loss_value):
-    logging.info('@sahiltyagi4 inside the scale loss function called fom compute_gradients function in optimize.py')
+    logging.info('@sahiltyagi4 inside the scale loss function cad1111lled fom compute_gradients function in optimize.py')
     tf_config = json.loads(os.environ["TF_CONFIG"])
     task_type = tf_config["task"]["type"]
     logging.info('@sahiltyagi4 TF_CONFIG task-type called from _scale_loss function %s', task_type)
