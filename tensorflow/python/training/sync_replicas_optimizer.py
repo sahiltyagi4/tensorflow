@@ -423,7 +423,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           gradient_norm_assign = tf.assign(self._gradient_globalnorm, gradient_global_norm, name='global_norm_assign')
           gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
                                                name='global_gradient_variance')
-          clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
+          _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
           clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
         with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign]):
