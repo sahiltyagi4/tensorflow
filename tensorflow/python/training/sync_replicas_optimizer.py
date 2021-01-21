@@ -314,7 +314,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=tf.float32,
-        name="clipnorm_val")
+        name="clipnorm_val11")
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
