@@ -270,6 +270,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     train_ops = []
     aggregated_grad = []
     var_list = []
+    grad_list = []
 
     tf_config = json.loads(os.environ['TF_CONFIG'])
     batchlist = tf_config['batch_size_list']
@@ -316,6 +317,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=tf.float32,
         name="clipnorm_val11")
 
+      self._compgrad = variable_scope.variable(
+        initial_value=-1.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="compgrad1")
+
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(
@@ -324,6 +332,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     with ops.name_scope(None, self._name):
       for grad, var in grads_and_vars:
         var_list.append(var)
+        grad_list.append(grad)
         with ops.device(var.device):
           # Dense gradients.
           if grad is None:
@@ -352,6 +361,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               self._replicas_to_aggregate))
 
           self._accumulator_list.append((grad_accum, var.device))
+
+      _, cg_norm1 = tf.clip_by_global_norm(grad_list, clip_norm=0.0)
+      compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
@@ -426,7 +438,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
           clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
-        with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign]):
+        with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign]):
           with ops.control_dependencies([update_op]):
             # Sync_op needs to insert tokens to the token queue at the end of the
             # step so the replicas can fetch them to start the next step.
