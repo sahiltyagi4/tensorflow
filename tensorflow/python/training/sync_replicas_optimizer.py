@@ -304,26 +304,26 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=tf.float32,
         name="gradient_global_norm")
 
-      self._gradient_variance = variable_scope.variable(
-        initial_value=0.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="gradient_variance")
+      # self._gradient_variance = variable_scope.variable(
+      #   initial_value=0.0,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="gradient_variance")
 
-      self._clipnorm_val = variable_scope.variable(
-        initial_value=0.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="clipnorm_val11")
+      # self._clipnorm_val = variable_scope.variable(
+      #   initial_value=0.0,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="clipnorm_val11")
 
-      self._compgrad = variable_scope.variable(
-        initial_value=-1.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="compgrad1")
+      # self._compgrad = variable_scope.variable(
+      #   initial_value=-1.0,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="compgrad1")
 
       self._computed_norm = variable_scope.variable(
         initial_value=-1.0,
@@ -371,8 +371,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           self._accumulator_list.append((grad_accum, var.device))
 
-      _, cg_norm1 = tf.clip_by_global_norm(grad_list, clip_norm=0.0)
-      compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
+      # _, cg_norm1 = tf.clip_by_global_norm(grad_list, clip_norm=0.0)
+      # compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
 
       #typical norm computation from list of grad tensors
       abc_concat = tf.concat(grad_list2, 0)
@@ -418,7 +418,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # I've added a control dependency on 'aggregated_grad' op of the tf graph. Thus, the following computations
           # occur only once the gradients from the workers have been combined
           gradient_list = []
-          clip_norm_list = []
+          #clip_norm_list = []
           for g2 in aggregated_grad:
             #NOTE: the computation for variance and norm below happens in the model fn as well right after the
             # compute_gradients(..) call AT EVERY WORKER. this below happens after apply_gradients(..) call when all
@@ -428,7 +428,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             # each element in the list 'gradient_list' contains a flattened 1D tensor of the gradient for every
             # corresponding fully-connected or convolutional layer
             gradient_list.append(tf.reshape(g2, [-1]))
-            clip_norm_list.append(g2)
+            #clip_norm_list.append(g2)
 
           # concat takes flattened tensor from each layer (which is a single element at a given index in gradient_list)
           # and puts all the gradient (from every layer) into a single 1D tensor
@@ -448,12 +448,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # ALSO, AS IN THE ADASCALE PAPER, THE GAIN RATIO USES TWO VALUES sigma^2 and mew^2: THESE ARE THOSE VALUES
           # sigma^2 = overall_gradient_variance and mew^2 = |G|^2 = gradient_global_norm
           gradient_norm_assign = tf.assign(self._gradient_globalnorm, gradient_global_norm, name='global_norm_assign')
-          gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
-                                               name='global_gradient_variance')
-          _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
-          clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
+          # gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
+          #                                      name='global_gradient_variance')
+          # _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
+          # clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
-        with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
+        # with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
+        with ops.control_dependencies([gradient_norm_assign, abc_assign]):
           with ops.control_dependencies([update_op]):
             # Sync_op needs to insert tokens to the token queue at the end of the
             # step so the replicas can fetch them to start the next step.
