@@ -271,6 +271,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     aggregated_grad = []
     var_list = []
     grad_list = []
+    grad_list2 = []
 
     tf_config = json.loads(os.environ['TF_CONFIG'])
     batchlist = tf_config['batch_size_list']
@@ -324,6 +325,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=tf.float32,
         name="compgrad1")
 
+      self._computed_norm = variable_scope.variable(
+        initial_value=-1.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="computed_norm1")
+
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(
@@ -333,6 +341,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       for grad, var in grads_and_vars:
         var_list.append(var)
         grad_list.append(grad)
+        grad_list2.append(tf.reshape(grad, [-1]))
         with ops.device(var.device):
           # Dense gradients.
           if grad is None:
@@ -364,6 +373,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
       _, cg_norm1 = tf.clip_by_global_norm(grad_list, clip_norm=0.0)
       compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
+
+      #typical norm computation from list of grad tensors
+      abc_concat = tf.concat(grad_list2, 0)
+      abc_flats = tf.reshape(abc_concat, [-1])
+      abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
+      abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
       aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
@@ -438,7 +453,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
           clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
-        with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign]):
+        with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
           with ops.control_dependencies([update_op]):
             # Sync_op needs to insert tokens to the token queue at the end of the
             # step so the replicas can fetch them to start the next step.
