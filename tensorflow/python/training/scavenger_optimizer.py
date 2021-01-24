@@ -53,8 +53,8 @@ from tensorflow.python.util.tf_export import tf_export
 #     arr[0] = time.time()
 #     return arr
 
-@tf_export(v1=["train.SyncReplicasOptimizer"])
-class SyncReplicasOptimizer(optimizer.Optimizer):
+@tf_export(v1=["train.ScavengerOptimizer"])
+class ScavengerOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
   This class is deprecated. For synchrononous training, please use [Distribution
@@ -122,7 +122,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # Note that if you want to have 2 backup replicas, you can change
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
-  opt = tf.compat.v1.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+  opt = tf.compat.v1.train.ScavengerOptimizer(opt, replicas_to_aggregate=50,
                                  total_num_replicas=50)
 
   # Some models have startup_delays to help stabilize the model but when using
@@ -148,24 +148,16 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       mon_sess.run(training_op)
   ```
 
-  To use SyncReplicasOptimizer with an `Estimator`, you need to send
+  To use ScavengerOptimizer with an `Estimator`, you need to send
   sync_replicas_hook while calling the fit.
   ```python
   my_estimator = DNNClassifier(..., optimizer=opt)
   my_estimator.fit(..., hooks=[sync_replicas_hook])
   ```
   """
-
-  @deprecation.deprecated(
-      None,
-      "The `SyncReplicaOptimizer` class is deprecated. For synchrononous "
-      "training, please use [Distribution Strategies](https://github.com/"
-      "tensorflow/tensorflow/tree/master/tensorflow/contrib/distribute).",
-      warn_once=True)
-
   def __init__(self,
                opt,
-               replicas_to_aggregate,
+               replicas_to_aggregate=None,
                total_num_replicas=None,
                variable_averages=None,
                variables_to_average=None,
@@ -195,9 +187,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     if total_num_replicas is None:
       total_num_replicas = replicas_to_aggregate
 
-    super(SyncReplicasOptimizer, self).__init__(use_locking, name)
+    super(ScavengerOptimizer, self).__init__(use_locking, name)
     logging.info(
-        "SyncReplicasV2: replicas_to_aggregate=%s; total_num_replicas=%s",
+        "ScavengerReplicasV2: replicas_to_aggregate=%s; total_num_replicas=%s",
         replicas_to_aggregate, total_num_replicas)
     self._opt = opt
     self._replicas_to_aggregate = replicas_to_aggregate
@@ -259,7 +251,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       ValueError: If global step is not provided, the staleness cannot be
         checked.
     """
-    logging.info('@sahiltyagi4 in sync replica opt apply_gradients')
+    if self._replicas_to_aggregate is None:
+        tf_config = json.loads(os.environ['TF_CONFIG'])
+        batchlist = tf_config['batch_size_list']
+        num_ps = int(len(tf_config['cluster']['ps']))
+        num_workers = len(batchlist) - num_ps
+        self._replicas_to_aggregate = num_workers
+
     if not grads_and_vars:
       raise ValueError("Must supply at least one variable")
 
@@ -466,7 +464,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     """Fetches a list of optimizer variables in the default graph.
 
     This wraps `variables()` from the actual optimizer. It does not include
-    the `SyncReplicasOptimizer`'s local step.
+    the `ScavengerOptimizer`'s local step.
 
     Returns:
       A list of variables.
@@ -530,18 +528,18 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     return init_tokens
 
   def make_session_run_hook(self, is_chief, num_tokens=-1):
-    """Creates a hook to handle SyncReplicasHook ops such as initialization."""
-    return _SyncReplicasOptimizerHook(self, is_chief, num_tokens)
+    """Creates a hook to handle ScavengerOptimizerHook ops such as initialization."""
+    return _ScavengerOptimizerHook(self, is_chief, num_tokens)
 
 
-class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
-  """A SessionRunHook handles ops related to SyncReplicasOptimizer."""
+class _ScavengerOptimizerHook(session_run_hook.SessionRunHook):
+  """A SessionRunHook handles ops related to _ScavengerOptimizer."""
 
   def __init__(self, sync_optimizer, is_chief, num_tokens):
-    """Creates hook to handle SyncReplicasOptimizer initialization ops.
+    """Creates hook to handle ScavengerOptimizer initialization ops.
 
     Args:
-      sync_optimizer: `SyncReplicasOptimizer` which this hook will initialize.
+      sync_optimizer: `ScavengerOptimizer` which this hook will initialize.
       is_chief: `Bool`, whether is this a chief replica or not.
       num_tokens: Number of tokens to add to the queue.
     """
@@ -552,7 +550,7 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
   def begin(self):
     if self._sync_optimizer._gradients_applied is False:  # pylint: disable=protected-access
       raise ValueError(
-          "SyncReplicasOptimizer.apply_gradient should be called before using "
+          "ScavengerOptimizer.apply_gradient should be called before using "
           "the hook.")
     if self._is_chief:
       self._local_init_op = self._sync_optimizer.chief_init_op
@@ -569,13 +567,13 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
       self._init_tokens_op = None
 
   def after_create_session(self, session, coord):
-    """Runs SyncReplicasOptimizer initialization ops."""
+    """Runs ScavengerOptimizer initialization ops."""
     local_init_success, msg = session_manager._ready(  # pylint: disable=protected-access
         self._ready_for_local_init_op, session,
-        "Model is not ready for SyncReplicasOptimizer local init.")
+        "Model is not ready for ScavengerOptimizer local init.")
     if not local_init_success:
       raise RuntimeError(
-          "Init operations did not make model ready for SyncReplicasOptimizer "
+          "Init operations did not make model ready for ScavengerOptimizer "
           "local_init. Init op: %s, error: %s" %
           (self._local_init_op.name, msg))
     session.run(self._local_init_op)

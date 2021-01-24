@@ -26,7 +26,7 @@ import json
 import time
 
 import six
-import tensorflow as tf
+import numpy as np
 #import numpy as np
 
 from tensorflow.python.distribute import distribute_lib
@@ -430,7 +430,6 @@ class Optimizer(
                         gate_gradients=GATE_OP,
                         aggregation_method=None,
                         colocate_gradients_with_ops=False,
-                        worker_name=None,
                         grad_loss=None):
     """Compute gradients of `loss` for the variables in `var_list`.
 
@@ -471,6 +470,25 @@ class Optimizer(
     @end_compatibility
     """
 
+    tf_config = json.loads(os.environ['TF_CONFIG'])
+    batchlist = tf_config['batch_size_list']
+    tasktype = tf_config['task']['type']
+    num_ps = int(len(tf_config['cluster']['ps']))
+    index = tf_config['task']['index']
+    if tasktype == 'ps':
+      node_batch_size = batchlist[0]
+    if tasktype == 'master':
+      node_batch_size = batchlist[1]
+    if tasktype == 'worker':
+      node_batch_size = batchlist[index + 2]
+
+    worker_batch_sizes = 0
+    for w in range(num_ps, len(batchlist)):
+      worker_batch_sizes += batchlist[w]
+
+    mean_worker_batchsize = float(worker_batch_sizes)/float(len(batchlist) - num_ps)
+    gradient_scale = float(node_batch_size)/float(mean_worker_batchsize)
+
     if callable(loss):
       with backprop.GradientTape() as tape:
         if var_list is not None:
@@ -489,7 +507,14 @@ class Optimizer(
       # to be executed.
       with ops.control_dependencies([loss_value]):
         grads = tape.gradient(loss_value, var_list, grad_loss)
-      return list(zip(grads, var_list))
+
+      grads_and_vars = list(zip(grads, var_list))
+      scaled_g = []
+      for g,_ in grads_and_vars:
+        scaled_g.append(g * gradient_scale)
+
+      grads_and_vars = list(zip(scaled_g, var_list))
+      return grads_and_vars
 
     # Non-callable/Tensor loss case
     if context.executing_eagerly():
@@ -530,6 +555,13 @@ class Optimizer(
       grads = control_flow_ops.tuple(grads)
 
     grads_and_vars = list(zip(grads, var_list))
+
+    scaled_g = []
+    for g,_ in grads_and_vars:
+      scaled_g.append(g * gradient_scale)
+
+    grads_and_vars = list(zip(scaled_g, var_list))
+
     self._assert_valid_dtypes(
       [v for g, v in grads_and_vars
        if g is not None and v.dtype != dtypes.resource])
@@ -538,10 +570,6 @@ class Optimizer(
 
   @staticmethod
   def _scale_loss(loss_value):
-    logging.info('@sahiltyagi4 inside the scale loss function cad1111lled fom compute_gradients function in optimize.py')
-    tf_config = json.loads(os.environ["TF_CONFIG"])
-    task_type = tf_config["task"]["type"]
-    logging.info('@sahiltyagi4 TF_CONFIG task-type called from _scale_loss function %s', task_type)
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
     if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
       num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
