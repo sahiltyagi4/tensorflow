@@ -308,7 +308,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         initial_value=0.0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
+        dtype=tf.float64,
         name="grad_compute_time")
 
       # self._gradient_variance = variable_scope.variable(
