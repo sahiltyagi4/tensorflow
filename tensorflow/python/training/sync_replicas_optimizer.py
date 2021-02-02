@@ -304,6 +304,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=tf.float32,
         name="gradient_global_norm")
 
+      self._compute_time = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="grad_compute_time")
+
       # self._gradient_variance = variable_scope.variable(
       #   initial_value=0.0,
       #   trainable=False,
@@ -374,13 +381,19 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       # _, cg_norm1 = tf.clip_by_global_norm(grad_list, clip_norm=0.0)
       # compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
 
+      compute_grad_time = tf.timestamp(name='cg_timestamp_tensor')
+      compute_time_assign = tf.assign(self._compute_time, compute_grad_time, name='compute_time_assign')
+
       #typical norm computation from list of grad tensors
       abc_concat = tf.concat(grad_list2, 0)
       abc_flats = tf.reshape(abc_concat, [-1])
       abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
       abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
-      aggregated_grads_and_vars = zip(aggregated_grad, var_list)
+      # aggregated_grads_and_vars = zip(aggregated_grad, var_list)
+
+      with ops.control_dependencies(compute_time_assign):
+        aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
       # sync_op will be assigned to the same device as the global step.
       with ops.device(global_step.device), ops.name_scope(""):
