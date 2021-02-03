@@ -529,14 +529,13 @@ class Optimizer(
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
 
-    sahil_compute_grad_time = tf.timestamp(name='sahil_compute_grad_time')
-    with ops.control_dependencies([sahil_compute_grad_time]):
-      grads_and_vars = list(zip(grads, var_list))
-      self._assert_valid_dtypes(
-        [v for g, v in grads_and_vars
-         if g is not None and v.dtype != dtypes.resource])
+    grads_and_vars = list(zip(grads, var_list))
+    self._assert_valid_dtypes(
+      [v for g, v in grads_and_vars
+       if g is not None and v.dtype != dtypes.resource])
 
-      return grads_and_vars, sahil_compute_grad_time
+    grads_and_vars.append(time.time())
+    return grads_and_vars
 
   @staticmethod
   def _scale_loss(loss_value):
