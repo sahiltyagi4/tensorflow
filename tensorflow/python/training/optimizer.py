@@ -534,12 +534,11 @@ class Optimizer(
       [v for g, v in grads_and_vars
        if g is not None and v.dtype != dtypes.resource])
 
-    grads_and_vars.append(time.time())
     return grads_and_vars
 
   @staticmethod
   def _scale_loss(loss_value):
-    logging.info('@sahiltyagi4 inside the scale loss function cad1111lled fom compute_gradients function in optimize.py')
+    logging.info('@sahiltyagi4 inside the scale loss function in compute_gradients function in optimize.py')
     tf_config = json.loads(os.environ["TF_CONFIG"])
     task_type = tf_config["task"]["type"]
     logging.info('@sahiltyagi4 TF_CONFIG task-type called from _scale_loss function %s', task_type)

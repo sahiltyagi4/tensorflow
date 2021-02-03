@@ -259,8 +259,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       ValueError: If global step is not provided, the staleness cannot be
         checked.
     """
-    compute_gradients_timestamp = grads_and_vars.pop(len(grads_and_vars) -1)
-    cg_time_tensor = tf.Variable(compute_gradients_timestamp)
+
     logging.info('@sahiltyagi4 in sync replica opt apply_gradients')
     if not grads_and_vars:
       raise ValueError("Must supply at least one variable")
@@ -306,6 +305,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=tf.float32,
         name="gradient_global_norm")
 
+      self._cg_timestamp = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float64,
+        name="compute_g_timestamp")
+
       # self._gradient_variance = variable_scope.variable(
       #   initial_value=0.0,
       #   trainable=False,
@@ -334,153 +340,156 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=tf.float32,
         name="computed_norm1")
 
-    self.local_step_init_op = state_ops.assign(self._local_step, global_step)
-    chief_init_ops = [self.local_step_init_op]
-    self.ready_for_local_init_op = variables.report_uninitialized_variables(
-      variables.global_variables())
+    cg_time = tf.timestamp(name='cg_time_tensor_local')
+    cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
 
-    with ops.name_scope(None, self._name):
-      for grad, var in grads_and_vars:
-        var_list.append(var)
-        grad_list.append(grad)
-        grad_list2.append(tf.reshape(grad, [-1]))
-        with ops.device(var.device):
-          # Dense gradients.
-          if grad is None:
-            aggregated_grad.append(None)  # pass-through.
-            continue
-          elif isinstance(grad, ops.Tensor):
-            logging.info('@sahiltyagi4 its a Tensor !!')
-            logging.info('@sahiltyagi4 shape of grad is ' + str(grad.shape))
-            grad_accum = data_flow_ops.ConditionalAccumulator(
-              grad.dtype,
-              shape=var.get_shape(),
-              shared_name=var.name + "/grad_accum")
-            train_ops.append(grad_accum.apply_grad(
-              grad, local_step=self._local_step))
-            aggregated_grad.append(grad_accum.take_grad(
-              self._replicas_to_aggregate))
-          else:
-            logging.info('@sahiltyagi4 its a IndexedSlice !!')
-            if not isinstance(grad, ops.IndexedSlices):
-              raise ValueError("Unknown grad type!")
-            grad_accum = data_flow_ops.SparseConditionalAccumulator(
-              grad.dtype, shape=(), shared_name=var.name + "/grad_accum")
-            train_ops.append(grad_accum.apply_indexed_slices_grad(
-              grad, local_step=self._local_step))
-            aggregated_grad.append(grad_accum.take_indexed_slices_grad(
-              self._replicas_to_aggregate))
+    with ops.control_dependencies([cg_time_assign]):
+      self.local_step_init_op = state_ops.assign(self._local_step, global_step)
+      chief_init_ops = [self.local_step_init_op]
+      self.ready_for_local_init_op = variables.report_uninitialized_variables(
+        variables.global_variables())
 
-          self._accumulator_list.append((grad_accum, var.device))
+      with ops.name_scope(None, self._name):
+        for grad, var in grads_and_vars:
+          var_list.append(var)
+          grad_list.append(grad)
+          grad_list2.append(tf.reshape(grad, [-1]))
+          with ops.device(var.device):
+            # Dense gradients.
+            if grad is None:
+              aggregated_grad.append(None)  # pass-through.
+              continue
+            elif isinstance(grad, ops.Tensor):
+              logging.info('@sahiltyagi4 its a Tensor !!')
+              logging.info('@sahiltyagi4 shape of grad is ' + str(grad.shape))
+              grad_accum = data_flow_ops.ConditionalAccumulator(
+                grad.dtype,
+                shape=var.get_shape(),
+                shared_name=var.name + "/grad_accum")
+              train_ops.append(grad_accum.apply_grad(
+                grad, local_step=self._local_step))
+              aggregated_grad.append(grad_accum.take_grad(
+                self._replicas_to_aggregate))
+            else:
+              logging.info('@sahiltyagi4 its a IndexedSlice !!')
+              if not isinstance(grad, ops.IndexedSlices):
+                raise ValueError("Unknown grad type!")
+              grad_accum = data_flow_ops.SparseConditionalAccumulator(
+                grad.dtype, shape=(), shared_name=var.name + "/grad_accum")
+              train_ops.append(grad_accum.apply_indexed_slices_grad(
+                grad, local_step=self._local_step))
+              aggregated_grad.append(grad_accum.take_indexed_slices_grad(
+                self._replicas_to_aggregate))
 
-      # _, cg_norm1 = tf.clip_by_global_norm(grad_list, clip_norm=0.0)
-      # compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
+            self._accumulator_list.append((grad_accum, var.device))
 
-      # typical norm computation from list of grad tensors
-      abc_concat = tf.concat(grad_list2, 0)
-      abc_flats = tf.reshape(abc_concat, [-1])
-      abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
-      abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
+        # _, cg_norm1 = tf.clip_by_global_norm(grad_list, clip_norm=0.0)
+        # compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
 
-      aggregated_grads_and_vars = zip(aggregated_grad, var_list)
+        # typical norm computation from list of grad tensors
+        abc_concat = tf.concat(grad_list2, 0)
+        abc_flats = tf.reshape(abc_concat, [-1])
+        abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
+        abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
-      # sync_op will be assigned to the same device as the global step.
-      with ops.device(global_step.device), ops.name_scope(""):
-        update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
-                                              global_step)
+        aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
-      # Create token queue.
-      with ops.device(global_step.device), ops.name_scope(""):
-        sync_token_queue = (
-          data_flow_ops.FIFOQueue(-1,
-                                  global_step.dtype.base_dtype,
-                                  shapes=(),
-                                  name="sync_token_q",
-                                  shared_name="sync_token_q"))
-        self._sync_token_queue = sync_token_queue
+        # sync_op will be assigned to the same device as the global step.
+        with ops.device(global_step.device), ops.name_scope(""):
+          update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
+                                                global_step)
 
-        # dummy_queue is passed to the queue runner. Don't use the real queues
-        # because the queue runner doesn't automatically reopen it once it
-        # closed queues in PS devices.
-        dummy_queue = (
-          data_flow_ops.FIFOQueue(1,
-                                  types_pb2.DT_INT32,
-                                  shapes=(),
-                                  name="dummy_queue",
-                                  shared_name="dummy_queue"))
+        # Create token queue.
+        with ops.device(global_step.device), ops.name_scope(""):
+          sync_token_queue = (
+            data_flow_ops.FIFOQueue(-1,
+                                    global_step.dtype.base_dtype,
+                                    shapes=(),
+                                    name="sync_token_q",
+                                    shared_name="sync_token_q"))
+          self._sync_token_queue = sync_token_queue
 
-      with ops.device(global_step.device), ops.name_scope(""):
-        # Replicas have to wait until they can get a token from the token queue.
-        with ops.control_dependencies(train_ops):
-          token = sync_token_queue.dequeue()
-        train_op = state_ops.assign(self._local_step, token)
+          # dummy_queue is passed to the queue runner. Don't use the real queues
+          # because the queue runner doesn't automatically reopen it once it
+          # closed queues in PS devices.
+          dummy_queue = (
+            data_flow_ops.FIFOQueue(1,
+                                    types_pb2.DT_INT32,
+                                    shapes=(),
+                                    name="dummy_queue",
+                                    shared_name="dummy_queue"))
 
-        with ops.control_dependencies(aggregated_grad):
-          # these computations are executed only after the aggregated gradients have been computed. as seen above,
-          # I've added a control dependency on 'aggregated_grad' op of the tf graph. Thus, the following computations
-          # occur only once the gradients from the workers have been combined
-          gradient_list = []
-          # clip_norm_list = []
-          for g2 in aggregated_grad:
-            # NOTE: the computation for variance and norm below happens in the model fn as well right after the
-            # compute_gradients(..) call AT EVERY WORKER. this below happens after apply_gradients(..) call when all
-            # worker updates are synchronized into a global update
-            # these are the gradients aggregated among all the workers
-            # this 'gradient_list' list holds the gradient from the gradients tensor returned by apply_gradients.
-            # each element in the list 'gradient_list' contains a flattened 1D tensor of the gradient for every
-            # corresponding fully-connected or convolutional layer
-            gradient_list.append(tf.reshape(g2, [-1]))
-            # clip_norm_list.append(g2)
+        with ops.device(global_step.device), ops.name_scope(""):
+          # Replicas have to wait until they can get a token from the token queue.
+          with ops.control_dependencies(train_ops):
+            token = sync_token_queue.dequeue()
+          train_op = state_ops.assign(self._local_step, token)
 
-          # concat takes flattened tensor from each layer (which is a single element at a given index in gradient_list)
-          # and puts all the gradient (from every layer) into a single 1D tensor
-          vars_concat = tf.concat(gradient_list, 0)
-          # giving the shape of a 1D tensor
-          flattened_gradients = tf.reshape(vars_concat, [-1])
+          with ops.control_dependencies(aggregated_grad):
+            # these computations are executed only after the aggregated gradients have been computed. as seen above,
+            # I've added a control dependency on 'aggregated_grad' op of the tf graph. Thus, the following computations
+            # occur only once the gradients from the workers have been combined
+            gradient_list = []
+            # clip_norm_list = []
+            for g2 in aggregated_grad:
+              # NOTE: the computation for variance and norm below happens in the model fn as well right after the
+              # compute_gradients(..) call AT EVERY WORKER. this below happens after apply_gradients(..) call when all
+              # worker updates are synchronized into a global update
+              # these are the gradients aggregated among all the workers
+              # this 'gradient_list' list holds the gradient from the gradients tensor returned by apply_gradients.
+              # each element in the list 'gradient_list' contains a flattened 1D tensor of the gradient for every
+              # corresponding fully-connected or convolutional layer
+              gradient_list.append(tf.reshape(g2, [-1]))
+              # clip_norm_list.append(g2)
 
-          # using the flattened gradient values from every layer of the model into a single vector, compute the variance
-          overall_gradient_variance = tf.math.reduce_variance(flattened_gradients)
-          # computes the gradient norm with order of 2
-          # this value is actually norm squared, ie., |G|^2 instead of just |G|.
-          gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
+            # concat takes flattened tensor from each layer (which is a single element at a given index in gradient_list)
+            # and puts all the gradient (from every layer) into a single 1D tensor
+            vars_concat = tf.concat(gradient_list, 0)
+            # giving the shape of a 1D tensor
+            flattened_gradients = tf.reshape(vars_concat, [-1])
 
-          # these two are just assign ops to assign the computed values to the designated variable of variance and norm
-          # these two assign ops are then used as a control dependency as seen immediately after these ops. this makes
-          # sure that we proceed to the next iteration only once these values have been computed correctly.
-          # ALSO, AS IN THE ADASCALE PAPER, THE GAIN RATIO USES TWO VALUES sigma^2 and mew^2: THESE ARE THOSE VALUES
-          # sigma^2 = overall_gradient_variance and mew^2 = |G|^2 = gradient_global_norm
-          gradient_norm_assign = tf.assign(self._gradient_globalnorm, gradient_global_norm, name='global_norm_assign')
-          # gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
-          #                                      name='global_gradient_variance')
-          # _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
-          # clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
+            # using the flattened gradient values from every layer of the model into a single vector, compute the variance
+            overall_gradient_variance = tf.math.reduce_variance(flattened_gradients)
+            # computes the gradient norm with order of 2
+            # this value is actually norm squared, ie., |G|^2 instead of just |G|.
+            gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
 
-        # with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
-        with ops.control_dependencies([gradient_norm_assign, abc_assign]):
-          with ops.control_dependencies([update_op]):
-            # Sync_op needs to insert tokens to the token queue at the end of the
-            # step so the replicas can fetch them to start the next step.
-            tokens = array_ops.fill([self._tokens_per_step], global_step)
-            sync_op = sync_token_queue.enqueue_many((tokens,))
+            # these two are just assign ops to assign the computed values to the designated variable of variance and norm
+            # these two assign ops are then used as a control dependency as seen immediately after these ops. this makes
+            # sure that we proceed to the next iteration only once these values have been computed correctly.
+            # ALSO, AS IN THE ADASCALE PAPER, THE GAIN RATIO USES TWO VALUES sigma^2 and mew^2: THESE ARE THOSE VALUES
+            # sigma^2 = overall_gradient_variance and mew^2 = |G|^2 = gradient_global_norm
+            gradient_norm_assign = tf.assign(self._gradient_globalnorm, gradient_global_norm, name='global_norm_assign')
+            # gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
+            #                                      name='global_gradient_variance')
+            # _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
+            # clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
-          if self._variable_averages is not None:
-            with ops.control_dependencies([sync_op]), ops.name_scope(""):
-              sync_op = self._variable_averages.apply(
-                self._variables_to_average)
+          # with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
+          with ops.control_dependencies([gradient_norm_assign, abc_assign]):
+            with ops.control_dependencies([update_op]):
+              # Sync_op needs to insert tokens to the token queue at the end of the
+              # step so the replicas can fetch them to start the next step.
+              tokens = array_ops.fill([self._tokens_per_step], global_step)
+              sync_op = sync_token_queue.enqueue_many((tokens,))
 
-          self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                              [sync_op])
+            if self._variable_averages is not None:
+              with ops.control_dependencies([sync_op]), ops.name_scope(""):
+                sync_op = self._variable_averages.apply(
+                  self._variables_to_average)
 
-      for accum, dev in self._accumulator_list:
-        with ops.device(dev):
-          chief_init_ops.append(
-            accum.set_global_step(
-              global_step, name="SetGlobalStep"))
-      self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
-      self._gradients_applied = True
+            self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
+                                                                [sync_op])
 
-      return train_op, cg_time_tensor
+        for accum, dev in self._accumulator_list:
+          with ops.device(dev):
+            chief_init_ops.append(
+              accum.set_global_step(
+                global_step, name="SetGlobalStep"))
+        self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
+        self._gradients_applied = True
 
+        return train_op
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
