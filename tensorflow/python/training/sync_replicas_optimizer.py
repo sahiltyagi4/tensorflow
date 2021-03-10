@@ -260,94 +260,94 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         checked.
     """
 
-    logging.info('@sahiltyagi4 in sync replica opt apply_gradients')
-    if not grads_and_vars:
-      raise ValueError("Must supply at least one variable")
-
-    if global_step is None:
-      raise ValueError("Global step is required to check staleness")
-
-    self._global_step = global_step
-    train_ops = []
-    aggregated_grad = []
-    var_list = []
-    grad_list = []
-    grad_list2 = []
-
-    tf_config = json.loads(os.environ['TF_CONFIG'])
-    batchlist = tf_config['batch_size_list']
-    tasktype = tf_config['task']['type']
-    num_ps = int(len(tf_config['cluster']['ps']))
-    index = tf_config['task']['index']
-    if tasktype == 'ps':
-      node_batch_size = int(batchlist[0])
-    if tasktype == 'master':
-      node_batch_size = int(batchlist[1])
-    if tasktype == 'worker':
-      node_batch_size = int(batchlist[index + 2])
-
-    # local_anchor op will be placed on this worker task by default.
-    local_anchor = control_flow_ops.no_op()
-    # Colocating local_step variable prevents it being placed on the PS.
-    distribution_strategy = distribution_strategy_context.get_strategy()
-    with distribution_strategy.extended.colocate_vars_with(local_anchor):
-      self._local_step = variable_scope.variable(
-        initial_value=0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=global_step.dtype.base_dtype,
-        name="sync_rep_local_step")
-
-      self._gradient_globalnorm = variable_scope.variable(
-        initial_value=0.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="gradient_global_norm")
-
-      self._cg_timestamp = variable_scope.variable(
-        initial_value=0.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float64,
-        name="compute_g_timestamp")
-
-      # self._gradient_variance = variable_scope.variable(
-      #   initial_value=0.0,
-      #   trainable=False,
-      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      #   dtype=tf.float32,
-      #   name="gradient_variance")
-
-      # self._clipnorm_val = variable_scope.variable(
-      #   initial_value=0.0,
-      #   trainable=False,
-      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      #   dtype=tf.float32,
-      #   name="clipnorm_val11")
-
-      # self._compgrad = variable_scope.variable(
-      #   initial_value=-1.0,
-      #   trainable=False,
-      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      #   dtype=tf.float32,
-      #   name="compgrad1")
-
-      self._computed_norm = variable_scope.variable(
-        initial_value=-1.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="computed_norm1")
-
     gradient_dependency_list = []
-    for gd,_ in grads_and_vars:
+    for gd, _ in grads_and_vars:
       gradient_dependency_list.append(gd)
 
-    cg_time = tf.timestamp(name='cg_time_tensor_local')
-    cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
-
     with ops.control_dependencies(gradient_dependency_list):
+      logging.info('@sahiltyagi4 in sync replica opt apply_gradients')
+      if not grads_and_vars:
+        raise ValueError("Must supply at least one variable")
+
+      if global_step is None:
+        raise ValueError("Global step is required to check staleness")
+
+      self._global_step = global_step
+      train_ops = []
+      aggregated_grad = []
+      var_list = []
+      grad_list = []
+      grad_list2 = []
+
+      tf_config = json.loads(os.environ['TF_CONFIG'])
+      batchlist = tf_config['batch_size_list']
+      tasktype = tf_config['task']['type']
+      num_ps = int(len(tf_config['cluster']['ps']))
+      index = tf_config['task']['index']
+      if tasktype == 'ps':
+        node_batch_size = int(batchlist[0])
+      if tasktype == 'master':
+        node_batch_size = int(batchlist[1])
+      if tasktype == 'worker':
+        node_batch_size = int(batchlist[index + 2])
+
+      # local_anchor op will be placed on this worker task by default.
+      local_anchor = control_flow_ops.no_op()
+      # Colocating local_step variable prevents it being placed on the PS.
+      distribution_strategy = distribution_strategy_context.get_strategy()
+      with distribution_strategy.extended.colocate_vars_with(local_anchor):
+        self._local_step = variable_scope.variable(
+          initial_value=0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=global_step.dtype.base_dtype,
+          name="sync_rep_local_step")
+
+        self._gradient_globalnorm = variable_scope.variable(
+          initial_value=0.0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float32,
+          name="gradient_global_norm")
+
+        self._cg_timestamp = variable_scope.variable(
+          initial_value=0.0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float64,
+          name="compute_g_timestamp")
+
+        # self._gradient_variance = variable_scope.variable(
+        #   initial_value=0.0,
+        #   trainable=False,
+        #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        #   dtype=tf.float32,
+        #   name="gradient_variance")
+
+        # self._clipnorm_val = variable_scope.variable(
+        #   initial_value=0.0,
+        #   trainable=False,
+        #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        #   dtype=tf.float32,
+        #   name="clipnorm_val11")
+
+        # self._compgrad = variable_scope.variable(
+        #   initial_value=-1.0,
+        #   trainable=False,
+        #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        #   dtype=tf.float32,
+        #   name="compgrad1")
+
+        self._computed_norm = variable_scope.variable(
+          initial_value=-1.0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float32,
+          name="computed_norm1")
+
+      cg_time = tf.timestamp(name='cg_time_tensor_local')
+      cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
+
       with ops.control_dependencies([cg_time_assign]):
         self.local_step_init_op = state_ops.assign(self._local_step, global_step)
         chief_init_ops = [self.local_step_init_op]
@@ -392,9 +392,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
 
           # typical norm computation from list of grad tensors
-          abc_concat = tf.concat(grad_list2, 0)
-          abc_flats = tf.reshape(abc_concat, [-1])
-          abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
+          abc_concat = tf.concat(grad_list2, 0, name='abc_concat')
+          abc_flats = tf.reshape(abc_concat, [-1], name='abc_reshape')
+
+          #abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
+          #abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
+
+          abc_norm = tf.math.reduce_sum(abc_flats, name='abc_norm')
           abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
           aggregated_grads_and_vars = zip(aggregated_grad, var_list)
