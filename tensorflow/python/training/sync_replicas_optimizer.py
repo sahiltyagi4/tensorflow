@@ -403,7 +403,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q : q, abc_flats))
           comma_tensor = tf.constant(',', dtype=tf.string)
           comma_separated_flats = tf.add(flats_as_strings, comma_tensor)
-          grad_flat = tf.strings.join(comma_separated_flats)
+          grad_flat = tf.strings.reduce_join(comma_separated_flats)
 
           write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat)
 
