@@ -400,7 +400,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           abc_norm = tf.math.reduce_sum(abc_flats, name='abc_norm')
           abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
-          flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q : q, abc_flats, dtype=tf.string))
+          flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q : q, abc_flats))
           comma_tensor = tf.constant(',', dtype=tf.string)
           comma_separated_flats = tf.add(flats_as_strings, comma_tensor)
           grad_flat = tf.strings.join(comma_separated_flats)
