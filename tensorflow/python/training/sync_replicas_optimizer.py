@@ -400,12 +400,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           abc_norm = tf.math.reduce_sum(abc_flats, name='abc_norm')
           abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
-          flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q : q, abc_flats))
-          comma_tensor = tf.constant(',', dtype=tf.string)
-          comma_separated_flats = tf.add(flats_as_strings, comma_tensor)
-          grad_flat = tf.strings.reduce_join(comma_separated_flats)
+          flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q : q, abc_flats), name='flats_as_strings')
+          comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')
+          comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
+          grad_flat = tf.strings.reduce_join(comma_separated_flats, name='grad_flat')
 
-          write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat)
+          write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat, name='write_gradients_op')
 
           aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
@@ -461,13 +461,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               # and puts all the gradient (from every layer) into a single 1D tensor
               vars_concat = tf.concat(gradient_list, 0)
               # giving the shape of a 1D tensor
-              flattened_gradients = tf.reshape(vars_concat, [-1])
+              flattened_gradients = tf.reshape(vars_concat, [-1], name='flattened_gradients')
 
               # using the flattened gradient values from every layer of the model into a single vector, compute the variance
               overall_gradient_variance = tf.math.reduce_variance(flattened_gradients)
               # computes the gradient norm with order of 2
               # this value is actually norm squared, ie., |G|^2 instead of just |G|.
-              gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2))
+              gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2), name='gradient_global_norm_local')
 
               # these two are just assign ops to assign the computed values to the designated variable of variance and norm
               # these two assign ops are then used as a control dependency as seen immediately after these ops. this makes
