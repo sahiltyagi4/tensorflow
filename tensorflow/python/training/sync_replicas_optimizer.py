@@ -354,7 +354,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           dtype=tf.float32,
-          name="computed_norm1")
+          name="flat_tensor_local")
 
       cg_time = tf.timestamp(name='cg_time_tensor_local')
       cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
@@ -408,122 +408,126 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
           flatval_assign = tf.assign(self._assigned_flat, abc_flats, name='flat_assignment1')
 
-          #abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
-          #abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
+          with ops.control_dependencies([flatval_assign]):
+            # abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
+            # abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
-          abc_norm = tf.math.reduce_sum(self._assigned_flat, name='abc_norm')
-          abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
+            abc_norm = tf.math.reduce_sum(self._assigned_flat, name='abc_norm')
+            abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
-          flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q : q, self._assigned_flat), name='flats_as_strings')
-          comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')
-          comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
-          grad_flat = tf.strings.reduce_join(comma_separated_flats, name='grad_flat')
+            flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, self._assigned_flat),
+                                                    name='flats_as_strings')
+            comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')
+            comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
+            grad_flat = tf.strings.reduce_join(comma_separated_flats, name='grad_flat')
 
-          #min_val = tf.reduce_min(self._assigned_flat, name='min_tensor_val')
+            # min_val = tf.reduce_min(self._assigned_flat, name='min_tensor_val')
 
-          write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat, name='write_gradients_op')
+            write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat,
+                                                  name='write_gradients_op')
 
-          aggregated_grads_and_vars = zip(aggregated_grad, var_list)
+            aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
-          # sync_op will be assigned to the same device as the global step.
-          with ops.device(global_step.device), ops.name_scope(""):
-            update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
-                                                  global_step)
+            # sync_op will be assigned to the same device as the global step.
+            with ops.device(global_step.device), ops.name_scope(""):
+              update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
+                                                    global_step)
 
-          # Create token queue.
-          with ops.device(global_step.device), ops.name_scope(""):
-            sync_token_queue = (
-              data_flow_ops.FIFOQueue(-1,
-                                      global_step.dtype.base_dtype,
-                                      shapes=(),
-                                      name="sync_token_q",
-                                      shared_name="sync_token_q"))
-            self._sync_token_queue = sync_token_queue
+            # Create token queue.
+            with ops.device(global_step.device), ops.name_scope(""):
+              sync_token_queue = (
+                data_flow_ops.FIFOQueue(-1,
+                                        global_step.dtype.base_dtype,
+                                        shapes=(),
+                                        name="sync_token_q",
+                                        shared_name="sync_token_q"))
+              self._sync_token_queue = sync_token_queue
 
-            # dummy_queue is passed to the queue runner. Don't use the real queues
-            # because the queue runner doesn't automatically reopen it once it
-            # closed queues in PS devices.
-            dummy_queue = (
-              data_flow_ops.FIFOQueue(1,
-                                      types_pb2.DT_INT32,
-                                      shapes=(),
-                                      name="dummy_queue",
-                                      shared_name="dummy_queue"))
+              # dummy_queue is passed to the queue runner. Don't use the real queues
+              # because the queue runner doesn't automatically reopen it once it
+              # closed queues in PS devices.
+              dummy_queue = (
+                data_flow_ops.FIFOQueue(1,
+                                        types_pb2.DT_INT32,
+                                        shapes=(),
+                                        name="dummy_queue",
+                                        shared_name="dummy_queue"))
 
-          with ops.device(global_step.device), ops.name_scope(""):
-            # Replicas have to wait until they can get a token from the token queue.
-            with ops.control_dependencies(train_ops):
-              token = sync_token_queue.dequeue()
-            train_op = state_ops.assign(self._local_step, token)
+            with ops.device(global_step.device), ops.name_scope(""):
+              # Replicas have to wait until they can get a token from the token queue.
+              with ops.control_dependencies(train_ops):
+                token = sync_token_queue.dequeue()
+              train_op = state_ops.assign(self._local_step, token)
 
-            with ops.control_dependencies(aggregated_grad):
-              # these computations are executed only after the aggregated gradients have been computed. as seen above,
-              # I've added a control dependency on 'aggregated_grad' op of the tf graph. Thus, the following computations
-              # occur only once the gradients from the workers have been combined
-              gradient_list = []
-              # clip_norm_list = []
-              for g2 in aggregated_grad:
-                # NOTE: the computation for variance and norm below happens in the model fn as well right after the
-                # compute_gradients(..) call AT EVERY WORKER. this below happens after apply_gradients(..) call when all
-                # worker updates are synchronized into a global update
-                # these are the gradients aggregated among all the workers
-                # this 'gradient_list' list holds the gradient from the gradients tensor returned by apply_gradients.
-                # each element in the list 'gradient_list' contains a flattened 1D tensor of the gradient for every
-                # corresponding fully-connected or convolutional layer
-                gradient_list.append(tf.reshape(g2, [-1]))
-                # clip_norm_list.append(g2)
+              with ops.control_dependencies(aggregated_grad):
+                # these computations are executed only after the aggregated gradients have been computed. as seen above,
+                # I've added a control dependency on 'aggregated_grad' op of the tf graph. Thus, the following computations
+                # occur only once the gradients from the workers have been combined
+                gradient_list = []
+                # clip_norm_list = []
+                for g2 in aggregated_grad:
+                  # NOTE: the computation for variance and norm below happens in the model fn as well right after the
+                  # compute_gradients(..) call AT EVERY WORKER. this below happens after apply_gradients(..) call when all
+                  # worker updates are synchronized into a global update
+                  # these are the gradients aggregated among all the workers
+                  # this 'gradient_list' list holds the gradient from the gradients tensor returned by apply_gradients.
+                  # each element in the list 'gradient_list' contains a flattened 1D tensor of the gradient for every
+                  # corresponding fully-connected or convolutional layer
+                  gradient_list.append(tf.reshape(g2, [-1]))
+                  # clip_norm_list.append(g2)
 
-              # concat takes flattened tensor from each layer (which is a single element at a given index in gradient_list)
-              # and puts all the gradient (from every layer) into a single 1D tensor
-              vars_concat = tf.concat(gradient_list, 0)
-              # giving the shape of a 1D tensor
-              flattened_gradients = tf.reshape(vars_concat, [-1], name='flattened_gradients')
+                # concat takes flattened tensor from each layer (which is a single element at a given index in gradient_list)
+                # and puts all the gradient (from every layer) into a single 1D tensor
+                vars_concat = tf.concat(gradient_list, 0)
+                # giving the shape of a 1D tensor
+                flattened_gradients = tf.reshape(vars_concat, [-1], name='flattened_gradients')
 
-              # using the flattened gradient values from every layer of the model into a single vector, compute the variance
-              overall_gradient_variance = tf.math.reduce_variance(flattened_gradients)
-              # computes the gradient norm with order of 2
-              # this value is actually norm squared, ie., |G|^2 instead of just |G|.
-              gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2), name='gradient_global_norm_local')
+                # using the flattened gradient values from every layer of the model into a single vector, compute the variance
+                overall_gradient_variance = tf.math.reduce_variance(flattened_gradients)
+                # computes the gradient norm with order of 2
+                # this value is actually norm squared, ie., |G|^2 instead of just |G|.
+                gradient_global_norm = tf.math.square(tf.norm(flattened_gradients, ord=2),
+                                                      name='gradient_global_norm_local')
 
-              # these two are just assign ops to assign the computed values to the designated variable of variance and norm
-              # these two assign ops are then used as a control dependency as seen immediately after these ops. this makes
-              # sure that we proceed to the next iteration only once these values have been computed correctly.
-              # ALSO, AS IN THE ADASCALE PAPER, THE GAIN RATIO USES TWO VALUES sigma^2 and mew^2: THESE ARE THOSE VALUES
-              # sigma^2 = overall_gradient_variance and mew^2 = |G|^2 = gradient_global_norm
-              gradient_norm_assign = tf.assign(self._gradient_globalnorm, gradient_global_norm,
-                                               name='global_norm_assign')
-              # gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
-              #                                      name='global_gradient_variance')
-              # _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
-              # clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
+                # these two are just assign ops to assign the computed values to the designated variable of variance and norm
+                # these two assign ops are then used as a control dependency as seen immediately after these ops. this makes
+                # sure that we proceed to the next iteration only once these values have been computed correctly.
+                # ALSO, AS IN THE ADASCALE PAPER, THE GAIN RATIO USES TWO VALUES sigma^2 and mew^2: THESE ARE THOSE VALUES
+                # sigma^2 = overall_gradient_variance and mew^2 = |G|^2 = gradient_global_norm
+                gradient_norm_assign = tf.assign(self._gradient_globalnorm, gradient_global_norm,
+                                                 name='global_norm_assign')
+                # gradient_variance_assign = tf.assign(self._gradient_variance, overall_gradient_variance,
+                #                                      name='global_gradient_variance')
+                # _,clip_norm = tf.clip_by_global_norm(clip_norm_list, clip_norm = 0.0)
+                # clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
-            # with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
-            with ops.control_dependencies([gradient_norm_assign, flatval_assign, abc_assign, write_gradients_op]):
-              with ops.control_dependencies([update_op]):
-                # Sync_op needs to insert tokens to the token queue at the end of the
-                # step so the replicas can fetch them to start the next step.
-                tokens = array_ops.fill([self._tokens_per_step], global_step)
-                sync_op = sync_token_queue.enqueue_many((tokens,))
+              # with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
+              with ops.control_dependencies([gradient_norm_assign, abc_assign, write_gradients_op]):
+                with ops.control_dependencies([update_op]):
+                  # Sync_op needs to insert tokens to the token queue at the end of the
+                  # step so the replicas can fetch them to start the next step.
+                  tokens = array_ops.fill([self._tokens_per_step], global_step)
+                  sync_op = sync_token_queue.enqueue_many((tokens,))
 
-              if self._variable_averages is not None:
-                with ops.control_dependencies([sync_op]), ops.name_scope(""):
-                  sync_op = self._variable_averages.apply(
-                    self._variables_to_average)
+                if self._variable_averages is not None:
+                  with ops.control_dependencies([sync_op]), ops.name_scope(""):
+                    sync_op = self._variable_averages.apply(
+                      self._variables_to_average)
 
-              self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                                  [sync_op])
+                self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
+                                                                    [sync_op])
 
-          for accum, dev in self._accumulator_list:
-            with ops.device(dev):
-              chief_init_ops.append(
-                accum.set_global_step(
-                  global_step, name="SetGlobalStep"))
-          self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
-          self._gradients_applied = True
+            for accum, dev in self._accumulator_list:
+              with ops.device(dev):
+                chief_init_ops.append(
+                  accum.set_global_step(
+                    global_step, name="SetGlobalStep"))
+            self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
+            self._gradients_applied = True
 
-          return train_op, self._computed_norm, self._gradient_globalnorm
-          #return train_op, abc_norm, self._gradient_globalnorm, min_val
-          #return train_op, self._computed_norm, self._gradient_globalnorm, min_val
+            return train_op, self._computed_norm, self._gradient_globalnorm
+            # return train_op, abc_norm, self._gradient_globalnorm, min_val
+            # return train_op, self._computed_norm, self._gradient_globalnorm, min_val
 
 
   def get_chief_queue_runner(self):
