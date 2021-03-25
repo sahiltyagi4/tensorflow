@@ -405,6 +405,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
           grad_flat = tf.strings.reduce_join(comma_separated_flats, name='grad_flat')
 
+          min_val = tf.reduce_min(abc_flats, name='min_tensor_val')
+
           write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat, name='write_gradients_op')
 
           aggregated_grads_and_vars = zip(aggregated_grad, var_list)
@@ -505,7 +507,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
           self._gradients_applied = True
 
-          return train_op, self._computed_norm, self._gradient_globalnorm
+          #return train_op, self._computed_norm, self._gradient_globalnorm
+          return train_op, abc_norm, self._gradient_globalnorm, min_val
+
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
