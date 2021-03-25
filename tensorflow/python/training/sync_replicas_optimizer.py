@@ -345,6 +345,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           dtype=tf.float32,
           name="computed_norm1")
 
+        self._computed_norm2 = variable_scope.variable(
+          initial_value=-1.0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float32,
+          name="bogus_compute_norm")
+
         init_flatval = []
         for ix in range(0, 25450):
           init_flatval.append(0.0)
@@ -422,6 +429,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             grad_flat = tf.strings.reduce_join(comma_separated_flats, name='grad_flat')
 
             # min_val = tf.reduce_min(self._assigned_flat, name='min_tensor_val')
+            #TESTING.. DELETE ONCE DONE
+            abc_norm2 = tf.math.reduce_sum(self._assigned_flat, name='abc_norm2')
+            abc_assign2 = tf.assign(self._computed_norm2, abc_norm2, name='abc_norm_assign2')
 
             write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat,
                                                   name='write_gradients_op')
@@ -502,7 +512,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                 # clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
               # with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
-              with ops.control_dependencies([gradient_norm_assign, abc_assign, write_gradients_op]):
+              with ops.control_dependencies([gradient_norm_assign, abc_assign, abc_assign2, write_gradients_op]):
                 with ops.control_dependencies([update_op]):
                   # Sync_op needs to insert tokens to the token queue at the end of the
                   # step so the replicas can fetch them to start the next step.
@@ -525,7 +535,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
             self._gradients_applied = True
 
-            return train_op, self._computed_norm, self._gradient_globalnorm
+            return train_op, self._computed_norm, self._gradient_globalnorm, self._computed_norm2
             # return train_op, abc_norm, self._gradient_globalnorm, min_val
             # return train_op, self._computed_norm, self._gradient_globalnorm, min_val
 
