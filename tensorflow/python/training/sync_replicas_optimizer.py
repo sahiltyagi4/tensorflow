@@ -345,6 +345,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           dtype=tf.float32,
           name="computed_norm1")
 
+        init_flatval = []
+        for ix in range(0, 25450):
+          init_flatval.append(0.0)
+
+        self._assigned_flat = variable_scope.variable(
+          initial_value=init_flatval,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float32,
+          name="computed_norm1")
+
       cg_time = tf.timestamp(name='cg_time_tensor_local')
       cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
 
@@ -395,17 +406,20 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           abc_concat = tf.concat(grad_list2, 0, name='abc_concat')
           abc_flats = tf.reshape(abc_concat, [-1], name='abc_reshape')
 
+          flatval_assign = tf.assign(self._assigned_flat, abc_flats, name='flat_assignment1')
+
           #abc_norm = tf.math.square(tf.norm(abc_flats, ord=2), name='abc_norm')
           #abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
-          abc_norm = tf.math.reduce_sum(abc_flats, name='abc_norm')
+          abc_norm = tf.math.reduce_sum(self._assigned_flat, name='abc_norm')
           abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
-          flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q : q, abc_flats), name='flats_as_strings')
+
+          flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q : q, self._assigned_flat), name='flats_as_strings')
           comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')
           comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
           grad_flat = tf.strings.reduce_join(comma_separated_flats, name='grad_flat')
 
-          min_val = tf.reduce_min(abc_flats, name='min_tensor_val')
+          min_val = tf.reduce_min(self._assigned_flat, name='min_tensor_val')
 
           write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat, name='write_gradients_op')
 
@@ -484,7 +498,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
               # clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
             # with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
-            with ops.control_dependencies([gradient_norm_assign, abc_assign, write_gradients_op]):
+            with ops.control_dependencies([gradient_norm_assign, flatval_assign, abc_assign, write_gradients_op]):
               with ops.control_dependencies([update_op]):
                 # Sync_op needs to insert tokens to the token queue at the end of the
                 # step so the replicas can fetch them to start the next step.
@@ -508,7 +522,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           self._gradients_applied = True
 
           #return train_op, self._computed_norm, self._gradient_globalnorm
-          return train_op, abc_norm, self._gradient_globalnorm, min_val
+          #return train_op, abc_norm, self._gradient_globalnorm, min_val
+          return train_op, self._computed_norm, self._gradient_globalnorm, min_val
 
 
   def get_chief_queue_runner(self):
