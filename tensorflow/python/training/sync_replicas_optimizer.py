@@ -356,7 +356,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           name="bogus_compute_norm")
 
         init_flatval = []
-        for ix in range(0, 25450):
+        for ix in range(0, 3274634):
+        #for ix in range(0, 25450):
           init_flatval.append(0.0)
 
         self._assigned_flat = variable_scope.variable(
