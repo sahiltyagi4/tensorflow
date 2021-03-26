@@ -496,6 +496,7 @@ class Optimizer(
           var_list = tape.watched_variables()
         # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
         # to be executed.
+        logging.info('loss is callable here....')
         with ops.control_dependencies([loss_value]):
           grads = tape.gradient(loss_value, var_list, grad_loss)
         return list(zip(grads, var_list))
@@ -537,6 +538,8 @@ class Optimizer(
         colocate_gradients_with_ops=colocate_gradients_with_ops)
       if gate_gradients == Optimizer.GATE_GRAPH:
         grads = control_flow_ops.tuple(grads)
+
+      ## CREATE TENSORS AND OPS HERE INSTEAD AND SEE.
 
       grads_and_vars = list(zip(grads, var_list))
       self._assert_valid_dtypes(
