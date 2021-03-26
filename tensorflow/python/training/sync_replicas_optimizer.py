@@ -292,6 +292,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       if tasktype == 'worker':
         node_batch_size = int(batchlist[index + 2])
 
+      dir_to_use = tasktype + '-' + str(index)
+
       # local_anchor op will be placed on this worker task by default.
       local_anchor = control_flow_ops.no_op()
       # Colocating local_step variable prevents it being placed on the PS.
@@ -434,7 +436,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             abc_norm2 = tf.math.reduce_sum(self._assigned_flat, name='abc_norm2')
             abc_assign2 = tf.assign(self._computed_norm2, abc_norm2, name='abc_norm_assign2')
 
-            write_gradients_op = tf.io.write_file(os.path.join('/root/gradients_dir', 'write_grads' + str(uuid.uuid4()) + '.txt'), grad_flat,
+            write_gradients_op = tf.io.write_file(os.path.join('/root/' + dir_to_use, 'write_grads.txt'), grad_flat,
                                                   name='write_gradients_op')
 
             aggregated_grads_and_vars = zip(aggregated_grad, var_list)
