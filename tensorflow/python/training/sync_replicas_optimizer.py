@@ -433,7 +433,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             abc_norm2 = tf.math.reduce_sum(self._assigned_flat, name='abc_norm2')
             abc_assign2 = tf.assign(self._computed_norm2, abc_norm2, name='abc_norm_assign2')
 
-            write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads.txt'), grad_flat,
+            write_gradients_op = tf.io.write_file(os.path.join('/root/', 'write_grads' + str(tf.train.get_global_step()) + '.txt'), grad_flat,
                                                   name='write_gradients_op')
 
             aggregated_grads_and_vars = zip(aggregated_grad, var_list)
