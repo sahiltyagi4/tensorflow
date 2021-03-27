@@ -553,7 +553,8 @@ class Optimizer(
         [v for g, v in grads_and_vars
          if g is not None and v.dtype != dtypes.resource])
 
-      with ops.control_dependencies([tf.get_default_graph().get_operation_by_name("gradients")]):
+      #with ops.control_dependencies([tf.get_default_graph().get_operation_by_name("gradients")]):
+      if True:
         local_grad_list = []
         for g in grads:
           local_grad_list.append((tf.reshape(g, [-1])))
