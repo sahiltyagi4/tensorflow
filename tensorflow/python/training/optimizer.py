@@ -482,7 +482,7 @@ class Optimizer(
       initial_value=10.0,
       trainable=False,
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      dtype=tf.float64,
+      dtype=tf.float32,
       name="local_compute_grad")
 
     increment_ctr = tf.assign_add(self._check_ctr, 1, name='increment_ctr')
