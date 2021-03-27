@@ -478,12 +478,12 @@ class Optimizer(
       dtype=tf.int64,
       name="check_increment_ctr")
 
-    self._local_compgrad = variable_scope.variable(
-      initial_value=10.0,
-      trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      dtype=tf.float32,
-      name="local_compute_grad")
+    # self._local_compgrad = variable_scope.variable(
+    #   initial_value=10.0,
+    #   trainable=False,
+    #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+    #   dtype=tf.float32,
+    #   name="local_compute_grad")
 
     increment_ctr = tf.assign_add(self._check_ctr, 1, name='increment_ctr')
     with ops.control_dependencies([increment_ctr]):
@@ -554,19 +554,20 @@ class Optimizer(
          if g is not None and v.dtype != dtypes.resource])
 
       #with ops.control_dependencies([tf.get_default_graph().get_operation_by_name("gradients")]):
-      if True:
-        local_grad_list = []
-        for g in grads:
-          local_grad_list.append((tf.reshape(g, [-1])))
+      # if True:
+      #   local_grad_list = []
+      #   for g in grads:
+      #     local_grad_list.append((tf.reshape(g, [-1])))
+      #
+      #   local_g_concat = tf.concat(local_grad_list, 0, name='local_g_concat')
+      #   local_g_flats = tf.reshape(local_g_concat, [-1], name='local_g_reshape')
+      #   local_g_norm = tf.reduce_sum(local_g_flats, name='local_g_norm')
+      #   local_g_assign = tf.assign(self._local_compgrad, local_g_norm, name='local_g_norm_assign')
+      #
+      #   with ops.control_dependencies([local_g_assign]):
+      #     return grads_and_vars, self._local_compgrad
 
-        local_g_concat = tf.concat(local_grad_list, 0, name='local_g_concat')
-        local_g_flats = tf.reshape(local_g_concat, [-1], name='local_g_reshape')
-        local_g_norm = tf.reduce_sum(local_g_flats, name='local_g_norm')
-        local_g_assign = tf.assign(self._local_compgrad, local_g_norm, name='local_g_norm_assign')
-        with ops.control_dependencies([local_g_assign]):
-          return grads_and_vars, self._local_compgrad
-
-      #return grads_and_vars
+      return grads_and_vars
 
   @staticmethod
   def _scale_loss(loss_value):
