@@ -309,7 +309,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         self._gradient_globalnorm = variable_scope.variable(
           initial_value=0.0,
           trainable=False,
-          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES],
           dtype=tf.float32,
           name="gradient_global_norm")
 
@@ -341,12 +341,15 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         #   dtype=tf.float32,
         #   name="compgrad1")
 
-        self._computed_norm = variable_scope.variable(
-          initial_value=-1.0,
-          trainable=False,
-          collections=[ops.GraphKeys.LOCAL_VARIABLES],
-          dtype=tf.float32,
-          name="computed_norm1")
+        # self._computed_norm = variable_scope.variable(
+        #   initial_value=-1.0,
+        #   trainable=False,
+        #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        #   dtype=tf.float32,
+        #   name="computed_norm1")
+
+        self._computed_norm = tf.Variable(-5.0, trainable=False, dtype=tf.float32,
+                                          collections=[ops.GraphKeys.LOCAL_VARIABLES])
 
         # init_flatval = []
         # for ix in range(0, 3274634):
@@ -373,7 +376,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           for grad, var in grads_and_vars:
             var_list.append(var)
             grad_list.append(grad)
-            grad_list2.append(tf.reshape(grad, [-1]))
+            #grad_list2.append(tf.reshape(grad, [-1]))
             with ops.device(var.device):
               # Dense gradients.
               if grad is None:
@@ -407,8 +410,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           # compgrad_assign = tf.assign(self._compgrad, cg_norm1, name = 'compgrad_assign')
 
           # typical norm computation from list of grad tensors
-          abc_concat = tf.concat(grad_list2, 0, name='abc_concat')
-          abc_flats = tf.reshape(abc_concat, [-1], name='abc_reshape')
+          #abc_concat = tf.concat(grad_list2, 0, name='abc_concat')
+          #abc_flats = tf.reshape(abc_concat, [-1], name='abc_reshape')
 
           #flatval_assign = tf.assign(self._assigned_flat, abc_flats, name='flat_assignment1')
 
@@ -420,8 +423,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             # abc_norm = tf.math.reduce_sum(self._assigned_flat, name='abc_norm')
             # abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
-            abc_norm = tf.reduce_sum(abc_flats, name='abc_norm')
-            abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
+            #abc_norm = tf.reduce_sum(abc_flats, name='abc_norm')
+            #abc_assign = tf.assign(self._computed_norm, abc_norm, name='abc_norm_assign')
 
             # flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, self._assigned_flat),
             #                                         name='flats_as_strings')
@@ -510,7 +513,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                 # clip_norm_assign = tf.assign(self._clipnorm_val, clip_norm)
 
               # with ops.control_dependencies([gradient_norm_assign, gradient_variance_assign, clip_norm_assign, compgrad_assign, abc_assign]):
-              with ops.control_dependencies([gradient_norm_assign, abc_assign]):
+              with ops.control_dependencies([gradient_norm_assign]):
+              #with ops.control_dependencies([gradient_norm_assign, abc_assign]):
               # with ops.control_dependencies([gradient_norm_assign, abc_assign, write_gradients_op]):
                 with ops.control_dependencies([update_op]):
                   # Sync_op needs to insert tokens to the token queue at the end of the
@@ -534,9 +538,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
             self._gradients_applied = True
 
+            return train_op, self._gradient_globalnorm
             #return train_op, self._computed_norm, self._gradient_globalnorm
-            return train_op, abc_norm, self._gradient_globalnorm
-            # return train_op, self._computed_norm, self._gradient_globalnorm, min_val
+            #return train_op, abc_norm, self._gradient_globalnorm
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
