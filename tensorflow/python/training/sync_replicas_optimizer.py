@@ -534,10 +534,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
             self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
             self._gradients_applied = True
 
-            return train_op, self._computed_norm, self._gradient_globalnorm
-            # return train_op, abc_norm, self._gradient_globalnorm, min_val
+            #return train_op, self._computed_norm, self._gradient_globalnorm
+            return train_op, abc_norm, self._gradient_globalnorm
             # return train_op, self._computed_norm, self._gradient_globalnorm, min_val
-
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
