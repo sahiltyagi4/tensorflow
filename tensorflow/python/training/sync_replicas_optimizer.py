@@ -283,99 +283,105 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         dtype=tf.float32,
         name="gradient_reduce_sum")
 
-    cg_time = tf.timestamp(name='cg_time_tensor_local')
-    cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
+    only_grads = []
+    for gr,_ in grads_and_vars:
+      only_grads.append(gr)
 
-    with ops.control_dependencies([cg_time_assign]):
-      self.local_step_init_op = state_ops.assign(self._local_step, global_step)
-      chief_init_ops = [self.local_step_init_op]
-      self.ready_for_local_init_op = variables.report_uninitialized_variables(
-        variables.global_variables())
+    with ops.control_dependencies(only_grads):
+      cg_time = tf.timestamp(name='cg_time_tensor_local')
+      cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
 
-      with ops.name_scope(None, self._name):
-        for grad, var in grads_and_vars:
-          var_list.append(var)
-          with ops.device(var.device):
-            # Dense gradients.
-            if grad is None:
-              aggregated_grad.append(None)  # pass-through.
-              continue
-            elif isinstance(grad, ops.Tensor):
-              grad_accum = data_flow_ops.ConditionalAccumulator(
-                grad.dtype,
-                shape=var.get_shape(),
-                shared_name=var.name + "/grad_accum")
-              train_ops.append(grad_accum.apply_grad(
-                grad, local_step=self._local_step))
-              aggregated_grad.append(grad_accum.take_grad(
-                self._replicas_to_aggregate))
-            else:
-              if not isinstance(grad, ops.IndexedSlices):
-                raise ValueError("Unknown grad type!")
-              grad_accum = data_flow_ops.SparseConditionalAccumulator(
-                grad.dtype, shape=(), shared_name=var.name + "/grad_accum")
-              train_ops.append(grad_accum.apply_indexed_slices_grad(
-                grad, local_step=self._local_step))
-              aggregated_grad.append(grad_accum.take_indexed_slices_grad(
-                self._replicas_to_aggregate))
+      # TAKE THIS OUT OF CONTROL 'only_grads' ABOVE IF DEPENDENCY DOESN'T HOLD UP...
+      with ops.control_dependencies([cg_time_assign]):
+        self.local_step_init_op = state_ops.assign(self._local_step, global_step)
+        chief_init_ops = [self.local_step_init_op]
+        self.ready_for_local_init_op = variables.report_uninitialized_variables(
+          variables.global_variables())
 
-            self._accumulator_list.append((grad_accum, var.device))
+        with ops.name_scope(None, self._name):
+          for grad, var in grads_and_vars:
+            var_list.append(var)
+            with ops.device(var.device):
+              # Dense gradients.
+              if grad is None:
+                aggregated_grad.append(None)  # pass-through.
+                continue
+              elif isinstance(grad, ops.Tensor):
+                grad_accum = data_flow_ops.ConditionalAccumulator(
+                  grad.dtype,
+                  shape=var.get_shape(),
+                  shared_name=var.name + "/grad_accum")
+                train_ops.append(grad_accum.apply_grad(
+                  grad, local_step=self._local_step))
+                aggregated_grad.append(grad_accum.take_grad(
+                  self._replicas_to_aggregate))
+              else:
+                if not isinstance(grad, ops.IndexedSlices):
+                  raise ValueError("Unknown grad type!")
+                grad_accum = data_flow_ops.SparseConditionalAccumulator(
+                  grad.dtype, shape=(), shared_name=var.name + "/grad_accum")
+                train_ops.append(grad_accum.apply_indexed_slices_grad(
+                  grad, local_step=self._local_step))
+                aggregated_grad.append(grad_accum.take_indexed_slices_grad(
+                  self._replicas_to_aggregate))
 
-        aggregated_grads_and_vars = zip(aggregated_grad, var_list)
+              self._accumulator_list.append((grad_accum, var.device))
 
-        # sync_op will be assigned to the same device as the global step.
-        with ops.device(global_step.device), ops.name_scope(""):
-          update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
-                                                global_step)
+          aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
-        # Create token queue.
-        with ops.device(global_step.device), ops.name_scope(""):
-          sync_token_queue = (
-            data_flow_ops.FIFOQueue(-1,
-                                    global_step.dtype.base_dtype,
-                                    shapes=(),
-                                    name="sync_token_q",
-                                    shared_name="sync_token_q"))
-          self._sync_token_queue = sync_token_queue
+          # sync_op will be assigned to the same device as the global step.
+          with ops.device(global_step.device), ops.name_scope(""):
+            update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
+                                                  global_step)
 
-        with ops.device(global_step.device), ops.name_scope(""):
-          # Replicas have to wait until they can get a token from the token queue.
-          with ops.control_dependencies(train_ops):
-            token = sync_token_queue.dequeue()
-          train_op = state_ops.assign(self._local_step, token)
+          # Create token queue.
+          with ops.device(global_step.device), ops.name_scope(""):
+            sync_token_queue = (
+              data_flow_ops.FIFOQueue(-1,
+                                      global_step.dtype.base_dtype,
+                                      shapes=(),
+                                      name="sync_token_q",
+                                      shared_name="sync_token_q"))
+            self._sync_token_queue = sync_token_queue
 
-          with ops.control_dependencies(aggregated_grad):
-            aggregated_list = []
-            for agg_g in aggregated_grad:
-              aggregated_list.append(tf.reshape(agg_g, [-1]))
+          with ops.device(global_step.device), ops.name_scope(""):
+            # Replicas have to wait until they can get a token from the token queue.
+            with ops.control_dependencies(train_ops):
+              token = sync_token_queue.dequeue()
+            train_op = state_ops.assign(self._local_step, token)
 
-            agg_concat = tf.concat(aggregated_list, 0, name='agg_concat')
-            agg_flattened = tf.reshape(agg_concat, [-1], name='agg_flattened')
-            agg_reduce_sum = tf.reduce_sum(agg_flattened, name='agg_reduce_sum')
-            agg_sum_assign = tf.assign(self._gradient_reduce_sum, agg_reduce_sum, name='agg_sum_assign')
+            with ops.control_dependencies(aggregated_grad):
+              aggregated_list = []
+              for agg_g in aggregated_grad:
+                aggregated_list.append(tf.reshape(agg_g, [-1]))
 
-          with ops.control_dependencies([agg_sum_assign]):
-            with ops.control_dependencies([update_op]):
-              # Sync_op needs to insert tokens to the token queue at the end of the
-              # step so the replicas can fetch them to start the next step.
-              tokens = array_ops.fill([self._tokens_per_step], global_step)
-              sync_op = sync_token_queue.enqueue_many((tokens,))
+              agg_concat = tf.concat(aggregated_list, 0, name='agg_concat')
+              agg_flattened = tf.reshape(agg_concat, [-1], name='agg_flattened')
+              agg_reduce_sum = tf.reduce_sum(agg_flattened, name='agg_reduce_sum')
+              agg_sum_assign = tf.assign(self._gradient_reduce_sum, agg_reduce_sum, name='agg_sum_assign')
 
-            if self._variable_averages is not None:
-              with ops.control_dependencies([sync_op]), ops.name_scope(""):
-                sync_op = self._variable_averages.apply(
-                  self._variables_to_average)
+            with ops.control_dependencies([agg_sum_assign]):
+              with ops.control_dependencies([update_op]):
+                # Sync_op needs to insert tokens to the token queue at the end of the
+                # step so the replicas can fetch them to start the next step.
+                tokens = array_ops.fill([self._tokens_per_step], global_step)
+                sync_op = sync_token_queue.enqueue_many((tokens,))
 
-            self._chief_queue_runner = queue_runner.QueueRunner(sync_token_queue, [sync_op])
+              if self._variable_averages is not None:
+                with ops.control_dependencies([sync_op]), ops.name_scope(""):
+                  sync_op = self._variable_averages.apply(
+                    self._variables_to_average)
 
-        for accum, dev in self._accumulator_list:
-          with ops.device(dev):
-            chief_init_ops.append(
-              accum.set_global_step(
-                global_step, name="SetGlobalStep"))
-        self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
-        self._gradients_applied = True
-        return train_op
+              self._chief_queue_runner = queue_runner.QueueRunner(sync_token_queue, [sync_op])
+
+          for accum, dev in self._accumulator_list:
+            with ops.device(dev):
+              chief_init_ops.append(
+                accum.set_global_step(
+                  global_step, name="SetGlobalStep"))
+          self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
+          self._gradients_applied = True
+          return train_op
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
