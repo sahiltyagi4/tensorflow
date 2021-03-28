@@ -275,13 +275,6 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     chief_init_ops = [self.local_step_init_op]
     self.ready_for_local_init_op = variables.report_uninitialized_variables(variables.global_variables())
 
-    self._cg_timestamp = variable_scope.variable(
-      initial_value=0.0,
-      trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      dtype=tf.float64,
-      name="compute_g_timestamp")
-
     with ops.name_scope(None, self._name):
       for grad, var in grads_and_vars:
         var_list.append(var)
