@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
@@ -273,7 +271,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
     self.local_step_init_op = state_ops.assign(self._local_step, global_step)
     chief_init_ops = [self.local_step_init_op]
-    self.ready_for_local_init_op = variables.report_uninitialized_variables(variables.global_variables())
+    self.ready_for_local_init_op = variables.report_uninitialized_variables(
+        variables.global_variables())
 
     with ops.name_scope(None, self._name):
       for grad, var in grads_and_vars:
