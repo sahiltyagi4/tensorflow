@@ -279,7 +279,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
       self._gradient_reduce_sum = variable_scope.variable(
         initial_value=-1.0,
         trainable=False,
-        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=tf.float32,
         name="gradient_reduce_sum")
 
