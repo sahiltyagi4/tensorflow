@@ -271,100 +271,110 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           dtype=global_step.dtype.base_dtype,
           name="sync_rep_local_step")
 
-    self.local_step_init_op = state_ops.assign(self._local_step, global_step)
-    chief_init_ops = [self.local_step_init_op]
-    self.ready_for_local_init_op = variables.report_uninitialized_variables(variables.global_variables())
+      self._cg_timestamp = variable_scope.variable(
+          initial_value=0.0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float64,
+          name="compute_g_timestamp")
 
-    self._cg_timestamp = variable_scope.variable(
-      initial_value=0.0,
-      trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      dtype=tf.float64,
-      name="compute_g_timestamp")
+      only_grads = []
+      for gr, _ in grads_and_vars:
+          only_grads.append(gr)
 
-    with ops.name_scope(None, self._name):
-      for grad, var in grads_and_vars:
-        var_list.append(var)
-        with ops.device(var.device):
-          # Dense gradients.
-          if grad is None:
-            aggregated_grad.append(None)  # pass-through.
-            continue
-          elif isinstance(grad, ops.Tensor):
-            grad_accum = data_flow_ops.ConditionalAccumulator(
-                grad.dtype,
-                shape=var.get_shape(),
-                shared_name=var.name + "/grad_accum")
-            train_ops.append(grad_accum.apply_grad(
-                grad, local_step=self._local_step))
-            aggregated_grad.append(grad_accum.take_grad(
-                self._replicas_to_aggregate))
-          else:
-            if not isinstance(grad, ops.IndexedSlices):
-              raise ValueError("Unknown grad type!")
-            grad_accum = data_flow_ops.SparseConditionalAccumulator(
-                grad.dtype, shape=(), shared_name=var.name + "/grad_accum")
-            train_ops.append(grad_accum.apply_indexed_slices_grad(
-                grad, local_step=self._local_step))
-            aggregated_grad.append(grad_accum.take_indexed_slices_grad(
-                self._replicas_to_aggregate))
+      with ops.control_dependencies(only_grads):
+          cg_time = tf.timestamp(name='cg_time_tensor_local')
+          cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
 
-          self._accumulator_list.append((grad_accum, var.device))
+          with ops.control_dependencies([cg_time_assign]):
+              self.local_step_init_op = state_ops.assign(self._local_step, global_step)
+              chief_init_ops = [self.local_step_init_op]
+              self.ready_for_local_init_op = variables.report_uninitialized_variables(
+                  variables.global_variables())
 
-      aggregated_grads_and_vars = zip(aggregated_grad, var_list)
+              with ops.name_scope(None, self._name):
+                  for grad, var in grads_and_vars:
+                      var_list.append(var)
+                      with ops.device(var.device):
+                          # Dense gradients.
+                          if grad is None:
+                              aggregated_grad.append(None)  # pass-through.
+                              continue
+                          elif isinstance(grad, ops.Tensor):
+                              grad_accum = data_flow_ops.ConditionalAccumulator(
+                                  grad.dtype,
+                                  shape=var.get_shape(),
+                                  shared_name=var.name + "/grad_accum")
+                              train_ops.append(grad_accum.apply_grad(
+                                  grad, local_step=self._local_step))
+                              aggregated_grad.append(grad_accum.take_grad(
+                                  self._replicas_to_aggregate))
+                          else:
+                              if not isinstance(grad, ops.IndexedSlices):
+                                  raise ValueError("Unknown grad type!")
+                              grad_accum = data_flow_ops.SparseConditionalAccumulator(
+                                  grad.dtype, shape=(), shared_name=var.name + "/grad_accum")
+                              train_ops.append(grad_accum.apply_indexed_slices_grad(
+                                  grad, local_step=self._local_step))
+                              aggregated_grad.append(grad_accum.take_indexed_slices_grad(
+                                  self._replicas_to_aggregate))
 
-      # sync_op will be assigned to the same device as the global step.
-      with ops.device(global_step.device), ops.name_scope(""):
-        update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
-                                              global_step)
+                          self._accumulator_list.append((grad_accum, var.device))
 
-      # Create token queue.
-      with ops.device(global_step.device), ops.name_scope(""):
-        sync_token_queue = (
-            data_flow_ops.FIFOQueue(-1,
-                                    global_step.dtype.base_dtype,
-                                    shapes=(),
-                                    name="sync_token_q",
-                                    shared_name="sync_token_q"))
-        self._sync_token_queue = sync_token_queue
+                  aggregated_grads_and_vars = zip(aggregated_grad, var_list)
 
-        # dummy_queue is passed to the queue runner. Don't use the real queues
-        # because the queue runner doesn't automatically reopen it once it
-        # closed queues in PS devices.
-        dummy_queue = (
-            data_flow_ops.FIFOQueue(1,
-                                    types_pb2.DT_INT32,
-                                    shapes=(),
-                                    name="dummy_queue",
-                                    shared_name="dummy_queue"))
+                  # sync_op will be assigned to the same device as the global step.
+                  with ops.device(global_step.device), ops.name_scope(""):
+                      update_op = self._opt.apply_gradients(aggregated_grads_and_vars,
+                                                            global_step)
 
-      with ops.device(global_step.device), ops.name_scope(""):
-        # Replicas have to wait until they can get a token from the token queue.
-        with ops.control_dependencies(train_ops):
-          token = sync_token_queue.dequeue()
-        train_op = state_ops.assign(self._local_step, token)
+                  # Create token queue.
+                  with ops.device(global_step.device), ops.name_scope(""):
+                      sync_token_queue = (
+                          data_flow_ops.FIFOQueue(-1,
+                                                  global_step.dtype.base_dtype,
+                                                  shapes=(),
+                                                  name="sync_token_q",
+                                                  shared_name="sync_token_q"))
+                      self._sync_token_queue = sync_token_queue
 
-        with ops.control_dependencies([update_op]):
-          # Sync_op needs to insert tokens to the token queue at the end of the
-          # step so the replicas can fetch them to start the next step.
-          tokens = array_ops.fill([self._tokens_per_step], global_step)
-          sync_op = sync_token_queue.enqueue_many((tokens,))
+                      # dummy_queue is passed to the queue runner. Don't use the real queues
+                      # because the queue runner doesn't automatically reopen it once it
+                      # closed queues in PS devices.
+                      dummy_queue = (
+                          data_flow_ops.FIFOQueue(1,
+                                                  types_pb2.DT_INT32,
+                                                  shapes=(),
+                                                  name="dummy_queue",
+                                                  shared_name="dummy_queue"))
 
-        if self._variable_averages is not None:
-          with ops.control_dependencies([sync_op]), ops.name_scope(""):
-            sync_op = self._variable_averages.apply(
-                self._variables_to_average)
+                  with ops.device(global_step.device), ops.name_scope(""):
+                      # Replicas have to wait until they can get a token from the token queue.
+                      with ops.control_dependencies(train_ops):
+                          token = sync_token_queue.dequeue()
+                      train_op = state_ops.assign(self._local_step, token)
 
-        self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                            [sync_op])
-      for accum, dev in self._accumulator_list:
-        with ops.device(dev):
-          chief_init_ops.append(
-              accum.set_global_step(
-                  global_step, name="SetGlobalStep"))
-      self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
-      self._gradients_applied = True
-      return train_op
+                      with ops.control_dependencies([update_op]):
+                          # Sync_op needs to insert tokens to the token queue at the end of the
+                          # step so the replicas can fetch them to start the next step.
+                          tokens = array_ops.fill([self._tokens_per_step], global_step)
+                          sync_op = sync_token_queue.enqueue_many((tokens,))
+
+                      if self._variable_averages is not None:
+                          with ops.control_dependencies([sync_op]), ops.name_scope(""):
+                              sync_op = self._variable_averages.apply(
+                                  self._variables_to_average)
+
+                      self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
+                                                                          [sync_op])
+                  for accum, dev in self._accumulator_list:
+                      with ops.device(dev):
+                          chief_init_ops.append(
+                              accum.set_global_step(
+                                  global_step, name="SetGlobalStep"))
+                  self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
+                  self._gradients_applied = True
+                  return train_op
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
