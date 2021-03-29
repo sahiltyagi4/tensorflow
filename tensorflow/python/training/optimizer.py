@@ -478,6 +478,13 @@ class Optimizer(
       dtype=tf.int64,
       name="check_increment_ctr")
 
+    self._local_reduce_sum = variable_scope.variable(
+      initial_value=-2.0,
+      trainable=False,
+      collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      dtype=tf.float32,
+      name="local_reduce_sum")
+
     increment_ctr = tf.assign_add(self._check_ctr, 1, name='increment_ctr')
     with ops.control_dependencies([increment_ctr]):
       if callable(loss):
@@ -540,13 +547,24 @@ class Optimizer(
         grads = control_flow_ops.tuple(grads)
 
       logging.info("called gradients.gradients() fn to compute individual gradients...")
+      with ops.control_dependencies(grads):
+        local_grads = []
+        for local_g in grads:
+          local_grads.append(tf.reshape(local_g, [-1]))
 
-      grads_and_vars = list(zip(grads, var_list))
-      self._assert_valid_dtypes(
-        [v for g, v in grads_and_vars
-         if g is not None and v.dtype != dtypes.resource])
+        with ops.control_dependencies(local_grads):
+          local_concat = tf.concat(local_grads, 0, name='agg_concat')
+          local_flattened = tf.reshape(local_concat, [-1], name='agg_flattened')
+          local_reduce_sum = tf.reduce_sum(local_flattened, name='agg_reduce_sum')
+          local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='agg_sum_assign')
 
-      return grads_and_vars
+          with ops.control_dependencies([local_sum_assign]):
+            grads_and_vars = list(zip(grads, var_list))
+            self._assert_valid_dtypes(
+              [v for g, v in grads_and_vars
+               if g is not None and v.dtype != dtypes.resource])
+
+            return grads_and_vars, self._local_reduce_sum
 
   @staticmethod
   def _scale_loss(loss_value):
