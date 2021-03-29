@@ -361,7 +361,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                         token = sync_token_queue.dequeue()
                     train_op = state_ops.assign(self._local_step, token)
 
-                    with ops.control_dependencies([aggregated_grad]):
+                    with ops.control_dependencies(aggregated_grad):
                         aggregated_list = []
                         for agg_g in aggregated_grad:
                             aggregated_list.append(tf.reshape(agg_g, [-1]))
