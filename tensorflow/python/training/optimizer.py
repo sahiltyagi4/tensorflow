@@ -27,7 +27,7 @@ import time
 
 import six
 import tensorflow as tf
-#import numpy as np
+from tensorflow.python.distribute import distribution_strategy_context
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
@@ -565,6 +565,31 @@ class Optimizer(
   #              if g is not None and v.dtype != dtypes.resource])
   #
   #           return grads_and_vars, local_reduce_sum
+
+  def get_localworker_norm(self, grads_and_vars):
+
+    local_anchor = control_flow_ops.no_op()
+    distribution_strategy = distribution_strategy_context.get_strategy()
+    with distribution_strategy.extended.colocate_vars_with(local_anchor):
+      self._local_reduce_sum = variable_scope.variable(
+        initial_value=-7.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="local_reduce_sum")
+
+    gradient_ops = []
+    for op in tf.get_default_graph().get_operations():
+      if 'gradients' in op.name:
+        gradient_ops.append(op)
+
+    with ops.control_dependencies(gradient_ops):
+      local_grads = [tf.reshape(g[0], [-1]) for g in grads_and_vars]
+      local_concat = tf.concat(local_grads, 0, name='local_concat')
+      local_flattened = tf.reshape(local_concat, [-1], name='local_flattened')
+      local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_sum')
+      local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
+      return local_reduce_sum
 
   def compute_gradients(self, loss, var_list=None,
                         gate_gradients=GATE_OP,
