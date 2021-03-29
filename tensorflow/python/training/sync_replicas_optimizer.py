@@ -278,6 +278,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           dtype=tf.float64,
           name="compute_g_timestamp")
 
+      self._gradient_reduce_sum = variable_scope.variable(
+          initial_value=-1.0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float32,
+          name="gradient_reduce_sum")
+
     only_grads = []
     for gr, _ in grads_and_vars:
         only_grads.append(gr)
@@ -285,7 +292,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     with ops.control_dependencies(only_grads):
         cg_time = tf.timestamp(name='cg_time_tensor_local')
         cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
-        
+
         with ops.control_dependencies([cg_time_assign]):
             self.local_step_init_op = state_ops.assign(self._local_step, global_step)
             chief_init_ops = [self.local_step_init_op]
@@ -354,19 +361,31 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                         token = sync_token_queue.dequeue()
                     train_op = state_ops.assign(self._local_step, token)
 
-                    with ops.control_dependencies([update_op]):
-                        # Sync_op needs to insert tokens to the token queue at the end of the
-                        # step so the replicas can fetch them to start the next step.
-                        tokens = array_ops.fill([self._tokens_per_step], global_step)
-                        sync_op = sync_token_queue.enqueue_many((tokens,))
+                    with ops.control_dependencies([aggregated_grad]):
+                        aggregated_list = []
+                        for agg_g in aggregated_grad:
+                            aggregated_list.append(tf.reshape(agg_g, [-1]))
 
-                    if self._variable_averages is not None:
-                        with ops.control_dependencies([sync_op]), ops.name_scope(""):
-                            sync_op = self._variable_averages.apply(
-                                self._variables_to_average)
+                        agg_concat = tf.concat(aggregated_list, 0, name='agg_concat')
+                        agg_flattened = tf.reshape(agg_concat, [-1], name='agg_flattened')
+                        agg_reduce_sum = tf.reduce_sum(agg_flattened, name='agg_reduce_sum')
+                        agg_sum_assign = tf.assign(self._gradient_reduce_sum, agg_reduce_sum, name='agg_sum_assign')
 
-                    self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
-                                                                        [sync_op])
+                    with ops.control_dependencies([agg_sum_assign]):
+                        with ops.control_dependencies([update_op]):
+                            # Sync_op needs to insert tokens to the token queue at the end of the
+                            # step so the replicas can fetch them to start the next step.
+                            tokens = array_ops.fill([self._tokens_per_step], global_step)
+                            sync_op = sync_token_queue.enqueue_many((tokens,))
+
+                        if self._variable_averages is not None:
+                            with ops.control_dependencies([sync_op]), ops.name_scope(""):
+                                sync_op = self._variable_averages.apply(
+                                    self._variables_to_average)
+
+                        self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
+                                                                            [sync_op])
+
                 for accum, dev in self._accumulator_list:
                     with ops.device(dev):
                         chief_init_ops.append(
@@ -374,7 +393,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                                 global_step, name="SetGlobalStep"))
                 self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
                 self._gradients_applied = True
-                return train_op
+                return train_op, self._gradient_reduce_sum
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
