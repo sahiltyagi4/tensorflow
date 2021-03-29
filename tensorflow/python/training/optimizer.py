@@ -553,18 +553,19 @@ class Optimizer(
           local_grads.append(tf.reshape(local_g, [-1]))
 
         with ops.control_dependencies(local_grads):
-          local_concat = tf.concat(local_grads, 0, name='agg_concat')
-          local_flattened = tf.reshape(local_concat, [-1], name='agg_flattened')
-          local_reduce_sum = tf.reduce_sum(local_flattened, name='agg_reduce_sum')
-          local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='agg_sum_assign')
+          local_concat = tf.concat(local_grads, 0, name='local_concat')
+          local_flattened = tf.reshape(local_concat, [-1], name='local_flattened')
+          local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_sum')
+          local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
 
           with ops.control_dependencies([local_sum_assign]):
             grads_and_vars = list(zip(grads, var_list))
-            self._assert_valid_dtypes(
-              [v for g, v in grads_and_vars
-               if g is not None and v.dtype != dtypes.resource])
+            with ops.control_dependencies(grads_and_vars):
+              self._assert_valid_dtypes(
+                [v for g, v in grads_and_vars
+                 if g is not None and v.dtype != dtypes.resource])
 
-            return grads_and_vars, self._local_reduce_sum
+              return grads_and_vars, local_reduce_sum
 
   @staticmethod
   def _scale_loss(loss_value):
