@@ -589,7 +589,7 @@ class Optimizer(
       local_flattened = tf.reshape(local_concat, [-1], name='local_flattened')
       local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_sum')
       local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
-      return local_reduce_sum
+      return self._local_reduce_sum
 
   def compute_gradients(self, loss, var_list=None,
                         gate_gradients=GATE_OP,

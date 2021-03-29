@@ -293,7 +293,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         cg_time = tf.timestamp(name='cg_time_tensor_local')
         cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
 
-        with ops.control_dependencies([cg_time_assign]):
+        with ops.control_dependencies([cg_time_assign, tf.get_default_graph().get_operation_by_name("local_sum_assign")]):
             self.local_step_init_op = state_ops.assign(self._local_step, global_step)
             chief_init_ops = [self.local_step_init_op]
             self.ready_for_local_init_op = variables.report_uninitialized_variables(
