@@ -393,7 +393,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                                 global_step, name="SetGlobalStep"))
                 self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
                 self._gradients_applied = True
-                return train_op, self._gradient_reduce_sum
+                return train_op, self._gradient_reduce_sum, self._cg_timestamp
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
