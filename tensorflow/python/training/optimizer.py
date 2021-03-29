@@ -560,12 +560,11 @@ class Optimizer(
 
           with ops.control_dependencies([local_sum_assign]):
             grads_and_vars = list(zip(grads, var_list))
-            with ops.control_dependencies(grads_and_vars):
-              self._assert_valid_dtypes(
-                [v for g, v in grads_and_vars
-                 if g is not None and v.dtype != dtypes.resource])
+            self._assert_valid_dtypes(
+              [v for g, v in grads_and_vars
+               if g is not None and v.dtype != dtypes.resource])
 
-              return grads_and_vars, local_reduce_sum
+            return grads_and_vars, local_reduce_sum
 
   @staticmethod
   def _scale_loss(loss_value):
