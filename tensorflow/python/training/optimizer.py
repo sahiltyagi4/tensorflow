@@ -568,6 +568,11 @@ class Optimizer(
 
   def get_localworker_norm(self, grads_and_vars):
 
+    tf_config = json.loads(os.environ['TF_CONFIG'])
+    w_type = str(tf_config['task']['type'])
+    w_index = str(tf_config['task']['index'])
+    worker_name = w_type + '_' + w_index + '_writegrads.txt'
+
     local_anchor = control_flow_ops.no_op()
     distribution_strategy = distribution_strategy_context.get_strategy()
     with distribution_strategy.extended.colocate_vars_with(local_anchor):
@@ -587,8 +592,16 @@ class Optimizer(
       local_grads = [tf.reshape(g[0], [-1]) for g in grads_and_vars]
       local_concat = tf.concat(local_grads, 0, name='local_concat')
       local_flattened = tf.reshape(local_concat, [-1], name='local_flattened')
-      local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_sum')
+      local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
       local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
+
+      flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, local_flattened), name='flats_as_strings')
+      comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')
+      comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
+      local_grad_flat = tf.strings.reduce_join(comma_separated_flats, name='local_grad_flat')
+      write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), local_grad_flat,
+                                            name='write_gradients_op')
+
       return self._local_reduce_sum
 
   def compute_gradients(self, loss, var_list=None,
