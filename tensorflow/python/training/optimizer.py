@@ -599,11 +599,12 @@ class Optimizer(
       local_grads = [tf.reshape(g[0], [-1]) for g in grads_and_vars]
       local_concat = tf.concat(local_grads, 0, name='local_concat')
       local_flattened = tf.reshape(local_concat, [-1], name='local_flattened')
-      local_norm_squared = tf.math.square(tf.norm(local_flattened, ord=2), name='local_norm_squared')
-      local_norm_squared_assign = tf.assign(self._worker_norm_square, local_norm_squared,
-                                            name='local_norm_squared_assign')
-      #local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
-      #local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
+
+      #local_norm_squared = tf.math.square(tf.norm(local_flattened, ord=2), name='local_norm_squared')
+      #local_norm_squared_assign = tf.assign(self._worker_norm_square, local_norm_squared,
+      #                                      name='local_norm_squared_assign')
+      local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
+      local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
 
       flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, local_flattened), name='flats_as_strings')
       comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')

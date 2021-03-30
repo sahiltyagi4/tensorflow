@@ -385,11 +385,11 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
                         agg_concat = tf.concat(aggregated_list, 0, name='agg_concat')
                         agg_flattened = tf.reshape(agg_concat, [-1], name='agg_flattened')
-                        #agg_reduce_sum = tf.reduce_sum(agg_flattened, name='agg_reduce_sum')
-                        agg_norm_squared = tf.math.square(tf.norm(agg_flattened, ord=2), name='agg_norm_squared')
-                        #agg_sum_assign = tf.assign(self._gradient_reduce_sum, agg_reduce_sum, name='agg_sum_assign')
-                        agg_norm_squared_assign = tf.assign(self._gradient_norm_squared, agg_norm_squared,
-                                                           name='agg_norm_squared_assign')
+                        agg_reduce_sum = tf.reduce_sum(agg_flattened, name='agg_reduce_sum')
+                        #agg_norm_squared = tf.math.square(tf.norm(agg_flattened, ord=2), name='agg_norm_squared')
+                        agg_sum_assign = tf.assign(self._gradient_reduce_sum, agg_reduce_sum, name='agg_sum_assign')
+                        #agg_norm_squared_assign = tf.assign(self._gradient_norm_squared, agg_norm_squared,
+                        #                                   name='agg_norm_squared_assign')
 
                         flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, agg_flattened),
                                                                 name='agg_flats_as_strings')
@@ -399,8 +399,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                         write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), agg_grad_flat,
                                                               name='agg_write_gradients_op')
 
-                    with ops.control_dependencies([agg_norm_squared_assign, write_gradients_op]):
-                    # with ops.control_dependencies([agg_sum_assign]):
+                    #with ops.control_dependencies([agg_norm_squared_assign, write_gradients_op]):
+                    with ops.control_dependencies([agg_sum_assign, write_gradients_op]):
                         with ops.control_dependencies([update_op]):
                             # Sync_op needs to insert tokens to the token queue at the end of the
                             # step so the replicas can fetch them to start the next step.
