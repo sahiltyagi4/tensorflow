@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+import os
+import json
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.distribute import distribution_strategy_context
@@ -278,12 +280,24 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           dtype=tf.float64,
           name="compute_g_timestamp")
 
-      self._gradient_reduce_sum = variable_scope.variable(
+      self._gradient_norm_squared = variable_scope.variable(
           initial_value=-1.0,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
           dtype=tf.float32,
-          name="gradient_reduce_sum")
+          name="gradient_norm_squared")
+
+      # self._gradient_reduce_sum = variable_scope.variable(
+      #     initial_value=-1.0,
+      #     trainable=False,
+      #     collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #     dtype=tf.float32,
+      #     name="gradient_reduce_sum")
+
+    tf_config = json.loads(os.environ['TF_CONFIG'])
+    w_type = str(tf_config['task']['type'])
+    w_index = str(tf_config['task']['index'])
+    worker_name = w_type + '_' + w_index + '_agg_grads.txt'
 
     only_grads = []
     for gr, _ in grads_and_vars:
@@ -293,6 +307,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         cg_time = tf.timestamp(name='cg_time_tensor_local')
         cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
 
+        #with ops.control_dependencies([cg_time_assign, tf.get_default_graph().get_operation_by_name("local_sum_assign")]):
         with ops.control_dependencies([cg_time_assign,
                                        tf.get_default_graph().get_operation_by_name("local_sum_assign"),
                                        tf.get_default_graph().get_operation_by_name("write_gradients_op")]):
@@ -370,10 +385,22 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
                         agg_concat = tf.concat(aggregated_list, 0, name='agg_concat')
                         agg_flattened = tf.reshape(agg_concat, [-1], name='agg_flattened')
-                        agg_reduce_sum = tf.reduce_sum(agg_flattened, name='agg_reduce_sum')
-                        agg_sum_assign = tf.assign(self._gradient_reduce_sum, agg_reduce_sum, name='agg_sum_assign')
+                        #agg_reduce_sum = tf.reduce_sum(agg_flattened, name='agg_reduce_sum')
+                        agg_norm_squared = tf.math.square(tf.norm(agg_flattened, ord=2), name='agg_norm_squared')
+                        #agg_sum_assign = tf.assign(self._gradient_reduce_sum, agg_reduce_sum, name='agg_sum_assign')
+                        agg_norm_squared_assign = tf.assign(self._gradient_norm_squared, agg_norm_squared,
+                                                           name='agg_norm_squared_assign')
 
-                    with ops.control_dependencies([agg_sum_assign]):
+                        flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, agg_flattened),
+                                                                name='agg_flats_as_strings')
+                        comma_tensor = tf.constant(',', dtype=tf.string, name='agg_comma_tensor')
+                        comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='agg_comma_separated_flats')
+                        agg_grad_flat = tf.strings.reduce_join(comma_separated_flats, name='agg_grad_flat')
+                        write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), agg_grad_flat,
+                                                              name='agg_write_gradients_op')
+
+                    with ops.control_dependencies([agg_norm_squared_assign, write_gradients_op]):
+                    # with ops.control_dependencies([agg_sum_assign]):
                         with ops.control_dependencies([update_op]):
                             # Sync_op needs to insert tokens to the token queue at the end of the
                             # step so the replicas can fetch them to start the next step.
