@@ -399,8 +399,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                         write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), agg_grad_flat,
                                                               name='agg_write_gradients_op')
 
-                    #with ops.control_dependencies([agg_norm_squared_assign, write_gradients_op]):
-                    with ops.control_dependencies([agg_sum_assign, write_gradients_op]):
+                    #with ops.control_dependencies([agg_norm_squared_assign]):
+                    with ops.control_dependencies([agg_sum_assign]):
                         with ops.control_dependencies([update_op]):
                             # Sync_op needs to insert tokens to the token queue at the end of the
                             # step so the replicas can fetch them to start the next step.
@@ -409,20 +409,20 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
                         if self._variable_averages is not None:
                             with ops.control_dependencies([sync_op]), ops.name_scope(""):
-                                sync_op = self._variable_averages.apply(
-                                    self._variables_to_average)
+                                sync_op = self._variable_averages.apply(self._variables_to_average)
 
                         self._chief_queue_runner = queue_runner.QueueRunner(dummy_queue,
                                                                             [sync_op])
 
-                for accum, dev in self._accumulator_list:
-                    with ops.device(dev):
-                        chief_init_ops.append(
-                            accum.set_global_step(
-                                global_step, name="SetGlobalStep"))
-                self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
-                self._gradients_applied = True
-                return train_op, self._gradient_reduce_sum, self._cg_timestamp
+                with ops.control_dependencies([write_gradients_op]):
+                    for accum, dev in self._accumulator_list:
+                        with ops.device(dev):
+                            chief_init_ops.append(
+                                accum.set_global_step(
+                                    global_step, name="SetGlobalStep"))
+                    self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
+                    self._gradients_applied = True
+                    return train_op, self._gradient_reduce_sum, self._cg_timestamp
 
   def get_chief_queue_runner(self):
     """Returns the QueueRunner for the chief to execute.
