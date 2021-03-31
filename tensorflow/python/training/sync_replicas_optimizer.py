@@ -287,12 +287,12 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           dtype=tf.float32,
           name="gradient_norm_squared")
 
-      # self._gradient_reduce_sum = variable_scope.variable(
-      #     initial_value=-1.0,
-      #     trainable=False,
-      #     collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      #     dtype=tf.float32,
-      #     name="gradient_reduce_sum")
+      self._gradient_reduce_sum = variable_scope.variable(
+          initial_value=-1.0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float32,
+          name="gradient_reduce_sum")
 
     tf_config = json.loads(os.environ['TF_CONFIG'])
     w_type = str(tf_config['task']['type'])
