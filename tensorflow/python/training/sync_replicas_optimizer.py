@@ -308,7 +308,8 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
 
         with ops.control_dependencies([cg_time_assign,
-                                       tf.get_default_graph().get_operation_by_name("local_norm_squared_assign")]):
+                                       tf.get_default_graph().get_operation_by_name("local_norm_squared_assign"),
+                                       tf.get_default_graph().get_operation_by_name("write_gradients_op")]):
         #with ops.control_dependencies([cg_time_assign, tf.get_default_graph().get_operation_by_name("local_sum_assign")]):
         #with ops.control_dependencies([cg_time_assign,
         #                               tf.get_default_graph().get_operation_by_name("local_sum_assign"),
