@@ -583,12 +583,12 @@ class Optimizer(
         dtype=tf.float32,
         name="worker_norm_square")
 
-      # self._local_reduce_sum = variable_scope.variable(
-      #   initial_value=-7.0,
-      #   trainable=False,
-      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      #   dtype=tf.float32,
-      #   name="local_reduce_sum")
+      self._local_reduce_sum = variable_scope.variable(
+        initial_value=-7.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="local_reduce_sum")
 
     gradient_ops = []
     for op in tf.get_default_graph().get_operations():
