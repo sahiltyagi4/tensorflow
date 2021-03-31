@@ -583,12 +583,12 @@ class Optimizer(
         dtype=tf.float32,
         name="worker_norm_square")
 
-      self._local_reduce_sum = variable_scope.variable(
-        initial_value=-7.0,
-        trainable=False,
-        collections=[ops.GraphKeys.LOCAL_VARIABLES],
-        dtype=tf.float32,
-        name="local_reduce_sum")
+      # self._local_reduce_sum = variable_scope.variable(
+      #   initial_value=-7.0,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="local_reduce_sum")
 
     gradient_ops = []
     for op in tf.get_default_graph().get_operations():
@@ -600,20 +600,21 @@ class Optimizer(
       local_concat = tf.concat(local_grads, 0, name='local_concat')
       local_flattened = tf.reshape(local_concat, [-1], name='local_flattened')
 
-      #local_norm_squared = tf.math.square(tf.norm(local_flattened, ord=2), name='local_norm_squared')
-      #local_norm_squared_assign = tf.assign(self._worker_norm_square, local_norm_squared,
-      #                                      name='local_norm_squared_assign')
-      local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
-      local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
+      local_norm_squared = tf.math.square(tf.norm(local_flattened, ord=2), name='local_norm_squared')
+      local_norm_squared_assign = tf.assign(self._worker_norm_square, local_norm_squared,
+                                            name='local_norm_squared_assign')
+      #local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
+      #local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
 
-      flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, local_flattened), name='flats_as_strings')
-      comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')
-      comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
-      local_grad_flat = tf.strings.reduce_join(comma_separated_flats, name='local_grad_flat')
-      write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), local_grad_flat,
-                                            name='write_gradients_op')
+      # flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, local_flattened), name='flats_as_strings')
+      # comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')
+      # comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
+      # local_grad_flat = tf.strings.reduce_join(comma_separated_flats, name='local_grad_flat')
+      # write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), local_grad_flat,
+      #                                       name='write_gradients_op')
 
-      return self._local_reduce_sum
+      return self._worker_norm_square
+      #return self._local_reduce_sum
 
   def compute_gradients(self, loss, var_list=None,
                         gate_gradients=GATE_OP,
