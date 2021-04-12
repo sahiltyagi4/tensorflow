@@ -404,8 +404,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                         #                                       name='agg_write_gradients_op')
 
                     with ops.control_dependencies([agg_norm_squared_assign]):
-                        agg_print_op = tf.print("aggregated_norm_sqr ", self._gradient_norm_squared,
-                                                name='agg_print_op', output_stream=sys.stdout)
+                        agg_print_op = tf.print("aggregated_norm_sqr ", self._gradient_norm_squared, "globalstep ",
+                                                tf.train.get_global_step(), name='agg_print_op',
+                                                output_stream=sys.stdout)
                     #with ops.control_dependencies([agg_sum_assign]):
                         with ops.control_dependencies([update_op, agg_print_op]):
                             # Sync_op needs to insert tokens to the token queue at the end of the

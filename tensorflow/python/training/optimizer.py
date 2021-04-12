@@ -605,8 +605,8 @@ class Optimizer(
       local_norm_squared_assign = tf.assign(self._worker_norm_square, local_norm_squared,
                                             name='local_norm_squared_assign')
 
-      local_norm_print_op = tf.print("local_worker_norm_sqr ", self._worker_norm_square, name='local_norm_print_op',
-                                     output_stream=sys.stdout)
+      local_norm_print_op = tf.print("local_worker_norm_sqr ", self._worker_norm_square, "globalstep ",
+                                     tf.train.get_global_step(), name='local_norm_print_op', output_stream=sys.stdout)
 
       #local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
       #local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
