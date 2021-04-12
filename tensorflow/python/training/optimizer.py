@@ -679,8 +679,7 @@ class Optimizer(
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
 
-        #commented out on April 12, 2021.
-        #loss_value = self._scale_loss(loss_value)
+        loss_value = self._scale_loss(loss_value)
 
       if var_list is None:
         var_list = tape.watched_variables()
