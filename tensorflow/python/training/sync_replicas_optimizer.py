@@ -21,6 +21,7 @@ from __future__ import print_function
 import tensorflow as tf
 import os
 import json
+import sys
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.distribute import distribution_strategy_context
@@ -307,9 +308,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         cg_time = tf.timestamp(name='cg_time_tensor_local')
         cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
 
-        with ops.control_dependencies([cg_time_assign]):
-        # with ops.control_dependencies([cg_time_assign,
-        #                                tf.get_default_graph().get_operation_by_name(os.environ["local_norm_squared_assign"])]):
+        #with ops.control_dependencies([cg_time_assign]):
+        with ops.control_dependencies([cg_time_assign,
+                                        tf.get_default_graph().get_operation_by_name(os.environ["local_norm_squared_assign"])]):
         #with ops.control_dependencies([cg_time_assign, tf.get_default_graph().get_operation_by_name("local_sum_assign")]):
         #with ops.control_dependencies([cg_time_assign,
         #                               tf.get_default_graph().get_operation_by_name("local_sum_assign"),
@@ -403,8 +404,10 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                         #                                       name='agg_write_gradients_op')
 
                     with ops.control_dependencies([agg_norm_squared_assign]):
+                        agg_print_op = tf.print("aggregated_norm_sqr ", self._gradient_norm_squared,
+                                                name='agg_print_op', output_stream=sys.stdout)
                     #with ops.control_dependencies([agg_sum_assign]):
-                        with ops.control_dependencies([update_op]):
+                        with ops.control_dependencies([update_op, agg_print_op]):
                             # Sync_op needs to insert tokens to the token queue at the end of the
                             # step so the replicas can fetch them to start the next step.
                             tokens = array_ops.fill([self._tokens_per_step], global_step)
@@ -424,7 +427,11 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                                 global_step, name="SetGlobalStep"))
                 self.chief_init_op = control_flow_ops.group(*(chief_init_ops))
                 self._gradients_applied = True
-                return train_op, self._gradient_norm_squared, self._cg_timestamp
+
+                return train_op
+                # commented on April 12, 2021
+                # return train_op, self._gradient_norm_squared, self._cg_timestamp
+
                 #return train_op, self._gradient_reduce_sum, self._cg_timestamp
 
   def get_chief_queue_runner(self):

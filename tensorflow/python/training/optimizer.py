@@ -24,6 +24,7 @@ import abc
 import os
 import json
 import time
+import sys
 
 import six
 import tensorflow as tf
@@ -603,6 +604,10 @@ class Optimizer(
       local_norm_squared = tf.math.square(tf.norm(local_flattened, ord=2), name='local_norm_squared')
       local_norm_squared_assign = tf.assign(self._worker_norm_square, local_norm_squared,
                                             name='local_norm_squared_assign')
+
+      local_norm_print_op = tf.print("local_worker_norm_sqr ", self._worker_norm_square, name='local_norm_print_op',
+                                     output_stream=sys.stdout)
+
       #local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
       #local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
 
@@ -613,7 +618,11 @@ class Optimizer(
       # write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), local_grad_flat,
       #                                        name='write_gradients_op')
 
-      return self._worker_norm_square
+      return local_norm_print_op
+
+      #most recent....commented on April 12, 2021
+      #return self._worker_norm_square
+
       #return self._local_reduce_sum
 
   def compute_gradients(self, loss, var_list=None,
@@ -669,7 +678,9 @@ class Optimizer(
         # Have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
-        loss_value = self._scale_loss(loss_value)
+
+        #commented out on April 12, 2021.
+        #loss_value = self._scale_loss(loss_value)
 
       if var_list is None:
         var_list = tape.watched_variables()
