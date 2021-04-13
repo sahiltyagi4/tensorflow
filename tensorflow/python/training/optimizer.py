@@ -610,8 +610,8 @@ class Optimizer(
       if 'gradients' in op.name:
         gradient_ops.append(op)
 
-    a = tf.assign(self._worker_norm_square, -3.0, name='op_a')
-    b = tf.assign(self._sum_local_sqrd_grad, -3.0, name='op_b')
+    a = tf.assign(self._worker_norm_square, tf.random.uniform([1])[0], name='op_a')
+    b = tf.assign(self._sum_local_sqrd_grad, tf.random.uniform([1])[0], name='op_b')
     #c = tf.assign(self._times_executed, 0.0, name='op_c')
     gradient_ops.append(a)
     gradient_ops.append(b)
