@@ -318,8 +318,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
         #with ops.control_dependencies([cg_time_assign]):
         with ops.control_dependencies([cg_time_assign,
                                         tf.get_default_graph().get_operation_by_name(os.environ["local_norm_squared_assign"]),
-                                       tf.get_default_graph().get_operation_by_name(os.environ["sqrd_sum_grad_assign"]),
-                                       tf.get_default_graph().get_operation_by_name(os.environ["times_exec_assign"])]):
+                                       tf.get_default_graph().get_operation_by_name(os.environ["sqrd_sum_grad_assign"])]):
         #with ops.control_dependencies([cg_time_assign, tf.get_default_graph().get_operation_by_name("local_sum_assign")]):
         #with ops.control_dependencies([cg_time_assign,
         #                               tf.get_default_graph().get_operation_by_name("local_sum_assign"),
@@ -411,10 +410,16 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                                                            name='agg_norm_squared_assign')
 
                         # added on April 13, 2021
-                        for agg_g in aggregated_grad:
-                            agg_sqrd_tensor = tf.math.square(agg_g, name='agg_sqrd_tensor')
-                            agg_sqrd_sum = tf.math.reduce_sum(agg_sqrd_tensor, name='agg_sqrd_sum')
-                            agg_sqrd_assign = tf.compat.v1.assign_add(self._agg_adascalelike, agg_sqrd_sum,
+                        # for agg_g in aggregated_grad:
+                        #     agg_sqrd_tensor = tf.math.square(agg_g, name='agg_sqrd_tensor')
+                        #     agg_sqrd_sum = tf.math.reduce_sum(agg_sqrd_tensor, name='agg_sqrd_sum')
+                        #     agg_sqrd_assign = tf.compat.v1.assign_add(self._agg_adascalelike, agg_sqrd_sum,
+                        #                                           name='agg_sqrd_sum_grad_assign')
+
+                        # edit April 14, 2021
+                        agg_sqrd_tensor = tf.math.square(agg_flattened, name='agg_sqrd_tensor')
+                        agg_sqrd_sum = tf.math.reduce_sum(agg_sqrd_tensor, name='agg_sqrd_sum')
+                        agg_sqrd_assign = tf.compat.v1.assign_add(self._agg_adascalelike, agg_sqrd_sum,
                                                                   name='agg_sqrd_sum_grad_assign')
 
                         # flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, agg_flattened),
