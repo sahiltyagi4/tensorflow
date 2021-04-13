@@ -578,11 +578,25 @@ class Optimizer(
     distribution_strategy = distribution_strategy_context.get_strategy()
     with distribution_strategy.extended.colocate_vars_with(local_anchor):
       self._worker_norm_square = variable_scope.variable(
-        initial_value=-7.0,
+        initial_value=0.0,
         trainable=False,
         collections=[ops.GraphKeys.LOCAL_VARIABLES],
         dtype=tf.float32,
         name="worker_norm_square")
+
+      self._sum_local_sqrd_grad = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="sum_local_sqrd_grad")
+
+      self._times_executed = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="times_executed")
 
       # self._local_reduce_sum = variable_scope.variable(
       #   initial_value=-7.0,
@@ -596,6 +610,13 @@ class Optimizer(
       if 'gradients' in op.name:
         gradient_ops.append(op)
 
+    a = tf.assign(self._worker_norm_square, 0.0, name='op_a')
+    b = tf.assign(self._sum_local_sqrd_grad, 0.0, name='op_b')
+    c = tf.assign(self._times_executed, 0.0, name='op_c')
+    gradient_ops.append(a)
+    gradient_ops.append(b)
+    gradient_ops.append(c)
+
     with ops.control_dependencies(gradient_ops):
       local_grads = [tf.reshape(g[0], [-1]) for g in grads_and_vars]
       local_concat = tf.concat(local_grads, 0, name='local_concat')
@@ -607,6 +628,17 @@ class Optimizer(
 
       local_norm_print_op = tf.print("local_worker_norm_sqr ", self._worker_norm_square, "globalstep ",
                                      tf.train.get_global_step(), name='local_norm_print_op', output_stream=sys.stdout)
+      # added on April 13, 2021 (testing and comparison)
+      for g,_ in grads_and_vars:
+        sqrd_tensor = tf.math.square(g, name='sqrd_tensor')
+        sqrd_sum = tf.math.reduce_sum(sqrd_tensor, name='sqrd_sum')
+        sqrd_assign = tf.compat.v1.assign_add(self._sum_local_sqrd_grad, sqrd_sum, name= 'sqrd_sum_grad_assign')
+        times_assign = tf.compat.v1.assign_add(self._times_executed, 1.0, name='times_exec_assign')
+
+      grad_sqrd_print_op = tf.print("adascale_sum ", self._sum_local_sqrd_grad, "glob_step",
+                                    tf.train.get_global_step(), name='adascale_norm_print', output_stream=sys.stdout)
+      times_print_op = tf.print("times_executed ", self._times_executed, "glob_step",
+                                tf.train.get_global_step(), name='times_printed_op', output_stream=sys.stdout)
 
       #local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
       #local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
@@ -618,7 +650,7 @@ class Optimizer(
       # write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), local_grad_flat,
       #                                        name='write_gradients_op')
 
-      return local_norm_print_op
+      return local_norm_print_op, grad_sqrd_print_op, times_print_op, sqrd_assign, times_assign
 
       #most recent....commented on April 12, 2021
       #return self._worker_norm_square
