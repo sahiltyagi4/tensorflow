@@ -317,7 +317,9 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
         #with ops.control_dependencies([cg_time_assign]):
         with ops.control_dependencies([cg_time_assign,
-                                        tf.get_default_graph().get_operation_by_name(os.environ["local_norm_squared_assign"])]):
+                                        tf.get_default_graph().get_operation_by_name(os.environ["local_norm_squared_assign"]),
+                                       tf.get_default_graph().get_operation_by_name(os.environ["sqrd_sum_grad_assign"]),
+                                       tf.get_default_graph().get_operation_by_name(os.environ["times_exec_assign"])]):
         #with ops.control_dependencies([cg_time_assign, tf.get_default_graph().get_operation_by_name("local_sum_assign")]):
         #with ops.control_dependencies([cg_time_assign,
         #                               tf.get_default_graph().get_operation_by_name("local_sum_assign"),
@@ -389,7 +391,13 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
                         token = sync_token_queue.dequeue()
                     train_op = state_ops.assign(self._local_step, token)
 
-                    with ops.control_dependencies(aggregated_grad):
+                    test_list = aggregated_grad
+                    p = tf.assign(self._gradient_norm_squared, 0.0)
+                    q = tf.assign(self._agg_adascalelike, 0.0)
+                    test_list.append(p)
+                    test_list.append(q)
+                    with ops.control_dependencies(test_list):
+                    # with ops.control_dependencies(aggregated_grad):
                         aggregated_list = []
                         for agg_g in aggregated_grad:
                             aggregated_list.append(tf.reshape(agg_g, [-1]))

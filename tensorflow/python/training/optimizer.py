@@ -650,7 +650,7 @@ class Optimizer(
       # write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), local_grad_flat,
       #                                        name='write_gradients_op')
 
-      return local_norm_print_op, grad_sqrd_print_op, times_print_op, sqrd_assign, times_assign
+      return local_norm_print_op, grad_sqrd_print_op, times_print_op
 
       #most recent....commented on April 12, 2021
       #return self._worker_norm_square
