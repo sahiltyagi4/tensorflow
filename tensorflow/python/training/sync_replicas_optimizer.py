@@ -286,7 +286,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           initial_value=0.0,
           trainable=False,
           collections=[ops.GraphKeys.LOCAL_VARIABLES],
-          dtype=tf.float64,
+          dtype=tf.float32,
           name="ag_localgrad")
 
       self._gradient_norm_squared = variable_scope.variable(
