@@ -281,6 +281,14 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
           dtype=tf.float64,
           name="compute_g_timestamp")
 
+      #tryna print local grads from apply_gradients()
+      self._ag_localgrad = variable_scope.variable(
+          initial_value=0.0,
+          trainable=False,
+          collections=[ops.GraphKeys.LOCAL_VARIABLES],
+          dtype=tf.float64,
+          name="ag_localgrad")
+
       self._gradient_norm_squared = variable_scope.variable(
           initial_value=-1.0,
           trainable=False,
@@ -314,11 +322,22 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     with ops.control_dependencies(only_grads):
         cg_time = tf.timestamp(name='cg_time_tensor_local')
         cg_time_assign = tf.assign(self._cg_timestamp, cg_time, name='cg_time_assign_op')
+        logging.info('global step device: ' + str(global_step.device))
 
-        with ops.control_dependencies([cg_time_assign]):
-        # with ops.control_dependencies([cg_time_assign,
-        #                                 tf.get_default_graph().get_operation_by_name(os.environ["local_norm_squared_assign"]),
-        #                                tf.get_default_graph().get_operation_by_name(os.environ["sqrd_sum_grad_assign"])]):
+        ag_grads = [tf.reshape(g[0], [-1]) for g in grads_and_vars]
+        ag_concat = tf.concat(ag_grads, 0, name='ag_concat')
+        ag_flattened = tf.reshape(ag_concat, [-1], name='ag_flattened')
+
+        ag_norm_squared = tf.math.square(tf.norm(ag_flattened, ord=2), name='ag_norm_squared')
+        ag_norm_squared_assign = tf.assign(self._ag_localgrad, ag_norm_squared,
+                                              name='ag_norm_squared_assign')
+        ag_print_op = tf.print("ag_print_op from apply_grad ", self._ag_localgrad, "globalstep ",
+                                     tf.train.get_global_step(), name='ag_print_op', output_stream=sys.stdout)
+
+        #with ops.control_dependencies([cg_time_assign]):
+        with ops.control_dependencies([cg_time_assign, ag_norm_squared_assign, ag_print_op,
+                                       tf.get_default_graph().get_operation_by_name(os.environ["local_norm_squared_assign"]),
+                                       tf.get_default_graph().get_operation_by_name(os.environ["sqrd_sum_grad_assign"])]):
         #with ops.control_dependencies([cg_time_assign, tf.get_default_graph().get_operation_by_name("local_sum_assign")]):
         #with ops.control_dependencies([cg_time_assign,
         #                               tf.get_default_graph().get_operation_by_name("local_sum_assign"),
