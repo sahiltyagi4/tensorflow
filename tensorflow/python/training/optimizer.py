@@ -637,7 +637,7 @@ class Optimizer(
 
       sqrd_tensor = tf.math.square(local_flattened, name='sqrd_tensor')
       sqrd_sum = tf.math.reduce_sum(sqrd_tensor, name='sqrd_sum')
-      sqrd_assign = tf.compat.v1.assign_add(self._sum_local_sqrd_grad, sqrd_sum, name='sqrd_sum_grad_assign')
+      sqrd_assign = tf.assign(self._sum_local_sqrd_grad, sqrd_sum, name='sqrd_sum_grad_assign')
 
       grad_sqrd_print_op = tf.print("adascale_sum ", self._sum_local_sqrd_grad, "glob_step",
                                     tf.train.get_global_step(), name='adascale_norm_print', output_stream=sys.stdout)
