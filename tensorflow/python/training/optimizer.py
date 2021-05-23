@@ -21,13 +21,20 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import os
+import json
+import time
+import sys
 
 import six
+import tensorflow as tf
+from tensorflow.python.distribute import distribution_strategy_context
 
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.eager import backprop
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -79,6 +86,10 @@ def _deduplicate_indexed_slices(values, indices):
       array_ops.shape(unique_indices)[0])
   return (summed_values, unique_indices)
 
+# def compute_time(x):
+#   arr = np.zeros(x.shape, dtype=np.float32)
+#   arr[0] = time.time()
+#   return arr
 
 def _var_key(var):
   # TODO(ashankar): Consolidate handling for eager and graph
@@ -396,6 +407,7 @@ class Optimizer(
     execution is enabled.
     @end_compatibility
     """
+    strt = time.time()
     grads_and_vars = self.compute_gradients(
         loss, var_list=var_list, gate_gradients=gate_gradients,
         aggregation_method=aggregation_method,
@@ -409,8 +421,245 @@ class Optimizer(
           " that do not support gradients, between variables %s and loss %s." %
           ([str(v) for _, v in grads_and_vars], loss))
 
+    end = time.time()
+    logging.info('@sahiltyagi INSIDE minimize fxn call starttime ' + str(strt) + ' and endtime ' + str(end))
+
     return self.apply_gradients(grads_and_vars, global_step=global_step,
                                 name=name)
+
+  # def compute_gradients(self, loss, var_list=None,
+  #                       gate_gradients=GATE_OP,
+  #                       aggregation_method=None,
+  #                       colocate_gradients_with_ops=False,
+  #                       worker_name=None,
+  #                       grad_loss=None):
+  #   """Compute gradients of `loss` for the variables in `var_list`.
+  #
+  #   This is the first part of `minimize()`.  It returns a list
+  #   of (gradient, variable) pairs where "gradient" is the gradient
+  #   for "variable".  Note that "gradient" can be a `Tensor`, an
+  #   `IndexedSlices`, or `None` if there is no gradient for the
+  #   given variable.
+  #
+  #   Args:
+  #     loss: A Tensor containing the value to minimize or a callable taking
+  #       no arguments which returns the value to minimize. When eager execution
+  #       is enabled it must be a callable.
+  #     var_list: Optional list or tuple of `tf.Variable` to update to minimize
+  #       `loss`.  Defaults to the list of variables collected in the graph
+  #       under the key `GraphKeys.TRAINABLE_VARIABLES`.
+  #     gate_gradients: How to gate the computation of gradients.  Can be
+  #       `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
+  #     aggregation_method: Specifies the method used to combine gradient terms.
+  #       Valid values are defined in the class `AggregationMethod`.
+  #     colocate_gradients_with_ops: If True, try colocating gradients with
+  #       the corresponding op.
+  #     grad_loss: Optional. A `Tensor` holding the gradient computed for `loss`.
+  #
+  #   Returns:
+  #     A list of (gradient, variable) pairs. Variable is always present, but
+  #     gradient can be `None`.
+  #
+  #   Raises:
+  #     TypeError: If `var_list` contains anything else than `Variable` objects.
+  #     ValueError: If some arguments are invalid.
+  #     RuntimeError: If called with eager execution enabled and `loss` is
+  #       not callable.
+  #
+  #   @compatibility(eager)
+  #   When eager execution is enabled, `gate_gradients`, `aggregation_method`,
+  #   and `colocate_gradients_with_ops` are ignored.
+  #   @end_compatibility
+  #   """
+  #
+  #   self._check_ctr = variable_scope.variable(
+  #     initial_value=0,
+  #     trainable=False,
+  #     collections=[ops.GraphKeys.LOCAL_VARIABLES],
+  #     dtype=tf.int64,
+  #     name="check_increment_ctr")
+  #
+  #   self._local_reduce_sum = variable_scope.variable(
+  #     initial_value=-2.0,
+  #     trainable=False,
+  #     collections=[ops.GraphKeys.LOCAL_VARIABLES],
+  #     dtype=tf.float32,
+  #     name="local_reduce_sum")
+  #
+  #   increment_ctr = tf.assign_add(self._check_ctr, 1, name='increment_ctr')
+  #   with ops.control_dependencies([increment_ctr]):
+  #     if callable(loss):
+  #       with backprop.GradientTape() as tape:
+  #         if var_list is not None:
+  #           tape.watch(var_list)
+  #         loss_value = loss()
+  #
+  #         # Scale loss if using a "mean" loss reduction and multiple replicas.
+  #         # Have to be careful to call distribute_lib.get_loss_reduction()
+  #         # *after* loss() is evaluated, so we know what loss reduction it uses.
+  #         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
+  #         loss_value = self._scale_loss(loss_value)
+  #
+  #       if var_list is None:
+  #         var_list = tape.watched_variables()
+  #       # TODO(jhseu): Figure out why GradientTape's gradients don't require loss
+  #       # to be executed.
+  #       logging.info('loss is callable here....')
+  #       with ops.control_dependencies([loss_value]):
+  #         grads = tape.gradient(loss_value, var_list, grad_loss)
+  #       return list(zip(grads, var_list))
+  #
+  #     # Non-callable/Tensor loss case
+  #     if context.executing_eagerly():
+  #       raise RuntimeError(
+  #         "`loss` passed to Optimizer.compute_gradients should "
+  #         "be a function when eager execution is enabled.")
+  #
+  #     # Scale loss if using a "mean" loss reduction and multiple replicas.
+  #     loss = self._scale_loss(loss)
+  #
+  #     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
+  #                               Optimizer.GATE_GRAPH]:
+  #       raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
+  #                        "Optimizer.GATE_OP, Optimizer.GATE_GRAPH.  Not %s" %
+  #                        gate_gradients)
+  #     self._assert_valid_dtypes([loss])
+  #     if grad_loss is not None:
+  #       self._assert_valid_dtypes([grad_loss])
+  #     if var_list is None:
+  #       var_list = (
+  #               variables.trainable_variables() +
+  #               ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+  #     else:
+  #       var_list = nest.flatten(var_list)
+  #     # pylint: disable=protected-access
+  #     var_list += ops.get_collection(ops.GraphKeys._STREAMING_MODEL_PORTS)
+  #     # pylint: enable=protected-access
+  #     processors = [_get_processor(v) for v in var_list]
+  #     if not var_list:
+  #       raise ValueError("No variables to optimize.")
+  #     var_refs = [p.target() for p in processors]
+  #     grads = gradients.gradients(
+  #       loss, var_refs, grad_ys=grad_loss,
+  #       gate_gradients=(gate_gradients == Optimizer.GATE_OP),
+  #       aggregation_method=aggregation_method,
+  #       colocate_gradients_with_ops=colocate_gradients_with_ops)
+  #     if gate_gradients == Optimizer.GATE_GRAPH:
+  #       grads = control_flow_ops.tuple(grads)
+  #
+  #     logging.info("called gradients.gradients() fn to compute individual gradients...")
+  #     with ops.control_dependencies(grads):
+  #       local_grads = []
+  #       for local_g in grads:
+  #         local_grads.append(tf.reshape(local_g, [-1]))
+  #
+  #       with ops.control_dependencies(local_grads):
+  #         local_concat = tf.concat(local_grads, 0, name='local_concat')
+  #         local_flattened = tf.reshape(local_concat, [-1], name='local_flattened')
+  #         local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_sum')
+  #         local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
+  #
+  #         with ops.control_dependencies([local_sum_assign]):
+  #           grads_and_vars = list(zip(grads, var_list))
+  #           self._assert_valid_dtypes(
+  #             [v for g, v in grads_and_vars
+  #              if g is not None and v.dtype != dtypes.resource])
+  #
+  #           return grads_and_vars, local_reduce_sum
+
+  def get_localworker_norm(self, grads_and_vars):
+
+    tf_config = json.loads(os.environ['TF_CONFIG'])
+    w_type = str(tf_config['task']['type'])
+    w_index = str(tf_config['task']['index'])
+    worker_name = w_type + '_' + w_index + '_writegrads.txt'
+
+    local_anchor = control_flow_ops.no_op()
+    distribution_strategy = distribution_strategy_context.get_strategy()
+    with distribution_strategy.extended.colocate_vars_with(local_anchor):
+      self._worker_norm_square = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="worker_norm_square")
+
+      self._sum_local_sqrd_grad = variable_scope.variable(
+        initial_value=0.0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=tf.float32,
+        name="sum_local_sqrd_grad")
+
+      # self._times_executed = variable_scope.variable(
+      #   initial_value=0.0,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="times_executed")
+
+      # self._local_reduce_sum = variable_scope.variable(
+      #   initial_value=-7.0,
+      #   trainable=False,
+      #   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+      #   dtype=tf.float32,
+      #   name="local_reduce_sum")
+
+    gradient_ops = []
+    for op in tf.get_default_graph().get_operations():
+      if 'gradients' in op.name:
+        gradient_ops.append(op)
+
+    # a = tf.assign(self._worker_norm_square, tf.random.uniform([1])[0], name='op_a')
+    # b = tf.assign(self._sum_local_sqrd_grad, tf.random.uniform([1])[0], name='op_b')
+    #c = tf.assign(self._times_executed, 0.0, name='op_c')
+    # gradient_ops.append(a)
+    # gradient_ops.append(b)
+    #gradient_ops.append(c)
+
+    with ops.control_dependencies(gradient_ops):
+      local_grads = [tf.reshape(g[0], [-1]) for g in grads_and_vars]
+      local_concat = tf.concat(local_grads, 0, name='local_concat')
+      local_flattened = tf.reshape(local_concat, [-1], name='local_flattened')
+
+      local_norm_squared = tf.math.square(tf.norm(local_flattened, ord=2), name='local_norm_squared')
+      local_norm_squared_assign = tf.assign(self._worker_norm_square, local_norm_squared,
+                                            name='local_norm_squared_assign')
+
+      local_norm_print_op = tf.print("local_worker_norm_sqr ", self._worker_norm_square, "globalstep ",
+                                     tf.train.get_global_step(), name='local_norm_print_op', output_stream=sys.stdout)
+      # added on April 13, 2021 (testing and comparison)
+      # for g,_ in grads_and_vars:
+      #   sqrd_tensor = tf.math.square(g, name='sqrd_tensor')
+      #   sqrd_sum = tf.math.reduce_sum(sqrd_tensor, name='sqrd_sum')
+      #   sqrd_assign = tf.compat.v1.assign_add(self._sum_local_sqrd_grad, sqrd_sum, name= 'sqrd_sum_grad_assign')
+      #   times_assign = tf.compat.v1.assign_add(self._times_executed, 1.0, name='times_exec_assign')
+
+      sqrd_tensor = tf.math.square(local_flattened, name='sqrd_tensor')
+      sqrd_sum = tf.math.reduce_sum(sqrd_tensor, name='sqrd_sum')
+      sqrd_assign = tf.assign(self._sum_local_sqrd_grad, sqrd_sum, name='sqrd_sum_grad_assign')
+
+      grad_sqrd_print_op = tf.print("adascale_sum ", self._sum_local_sqrd_grad, "glob_step",
+                                    tf.train.get_global_step(), name='adascale_norm_print', output_stream=sys.stdout)
+      # times_print_op = tf.print("times_executed ", self._times_executed, "glob_step",
+      #                           tf.train.get_global_step(), name='times_printed_op', output_stream=sys.stdout)
+
+      #local_reduce_sum = tf.reduce_sum(local_flattened, name='local_reduce_val')
+      #local_sum_assign = tf.assign(self._local_reduce_sum, local_reduce_sum, name='local_sum_assign')
+
+      # flats_as_strings = tf.strings.as_string(tf.map_fn(lambda q: q, local_flattened), name='flats_as_strings')
+      # comma_tensor = tf.constant(',', dtype=tf.string, name='comma_tensor')
+      # comma_separated_flats = tf.add(flats_as_strings, comma_tensor, name='comma_separated_flats')
+      # local_grad_flat = tf.strings.reduce_join(comma_separated_flats, name='local_grad_flat')
+      # write_gradients_op = tf.io.write_file(os.path.join('/root/', worker_name), local_grad_flat,
+      #                                        name='write_gradients_op')
+
+      return local_norm_print_op, grad_sqrd_print_op
+
+      #most recent....commented on April 12, 2021
+      #return self._worker_norm_square
+
+      #return self._local_reduce_sum
 
   def compute_gradients(self, loss, var_list=None,
                         gate_gradients=GATE_OP,
@@ -465,6 +714,7 @@ class Optimizer(
         # Have to be careful to call distribute_lib.get_loss_reduction()
         # *after* loss() is evaluated, so we know what loss reduction it uses.
         # TODO(josh11b): Test that we handle weight decay in a reasonable way.
+
         loss_value = self._scale_loss(loss_value)
 
       if var_list is None:
@@ -478,8 +728,8 @@ class Optimizer(
     # Non-callable/Tensor loss case
     if context.executing_eagerly():
       raise RuntimeError(
-          "`loss` passed to Optimizer.compute_gradients should "
-          "be a function when eager execution is enabled.")
+        "`loss` passed to Optimizer.compute_gradients should "
+        "be a function when eager execution is enabled.")
 
     # Scale loss if using a "mean" loss reduction and multiple replicas.
     loss = self._scale_loss(loss)
@@ -494,8 +744,8 @@ class Optimizer(
       self._assert_valid_dtypes([grad_loss])
     if var_list is None:
       var_list = (
-          variables.trainable_variables() +
-          ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
+              variables.trainable_variables() +
+              ops.get_collection(ops.GraphKeys.TRAINABLE_RESOURCE_VARIABLES))
     else:
       var_list = nest.flatten(var_list)
     # pylint: disable=protected-access
@@ -506,20 +756,25 @@ class Optimizer(
       raise ValueError("No variables to optimize.")
     var_refs = [p.target() for p in processors]
     grads = gradients.gradients(
-        loss, var_refs, grad_ys=grad_loss,
-        gate_gradients=(gate_gradients == Optimizer.GATE_OP),
-        aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops)
+      loss, var_refs, grad_ys=grad_loss,
+      gate_gradients=(gate_gradients == Optimizer.GATE_OP),
+      aggregation_method=aggregation_method,
+      colocate_gradients_with_ops=colocate_gradients_with_ops)
+    logging.info("using gradient.gradients fn to compute grads..")
     if gate_gradients == Optimizer.GATE_GRAPH:
       grads = control_flow_ops.tuple(grads)
     grads_and_vars = list(zip(grads, var_list))
     self._assert_valid_dtypes(
-        [v for g, v in grads_and_vars
-         if g is not None and v.dtype != dtypes.resource])
+      [v for g, v in grads_and_vars
+       if g is not None and v.dtype != dtypes.resource])
     return grads_and_vars
 
   @staticmethod
   def _scale_loss(loss_value):
+    logging.info('@sahiltyagi4 inside the scale loss function in compute_gradients function in optimize.py')
+    tf_config = json.loads(os.environ["TF_CONFIG"])
+    task_type = tf_config["task"]["type"]
+    logging.info('@sahiltyagi4 TF_CONFIG task-type called from _scale_loss function %s', task_type)
     ops.get_default_graph()._is_loss_scaled_by_optimizer = False  # pylint: disable=protected-access
     if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
       num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
@@ -560,6 +815,7 @@ class Optimizer(
     # as needed.
     if distribute_ctx.has_strategy():
       # Handle DistributionStrategy case.
+      logging.info('@sahiltyagi using distribution context has strategy....')
       if distribute_ctx.in_cross_replica_context():
         raise RuntimeError("Use `_distributed_apply()` instead of "
                            "`apply_gradients()` in a cross-replica context.")
@@ -569,6 +825,13 @@ class Optimizer(
           self._distributed_apply, args=(grads_and_vars, global_step, name))
 
     # No DistributionStrategy case.
+    logging.info('@sahiltyagi4 in the NO DISTRIBUTION STRATEGY CASE...')
+    # if sync_mode == 'ASP':
+    #   self._grad_variance = tf.Variable(0.0, trainable=False, name='gradient_variance')
+    #   self._b_simple = tf.Variable(0.0, trainable=False, name='b_simple')
+    #   variance_list = []
+    #   grad_component_variance = []
+
     grads_and_vars = tuple(grads_and_vars)  # Make sure repeat iteration works.
     if not grads_and_vars:
       raise ValueError("No variables provided.")
@@ -578,6 +841,9 @@ class Optimizer(
         try:
           # Convert the grad to Tensor or IndexedSlices if necessary.
           g = ops.convert_to_tensor_or_indexed_slices(g)
+          # if sync_mode == 'ASP':
+          #   variance_list.append(tf.reshape(g, [-1]))
+          #   grad_component_variance.append(tf.math.reduce_variance(tf.reshape(g, [-1])))
         except TypeError:
           raise TypeError(
               "Gradient must be convertible to a Tensor"
@@ -587,6 +853,14 @@ class Optimizer(
               "Gradient must be a Tensor, IndexedSlices, or None: %s" % g)
       p = _get_processor(v)
       converted_grads_and_vars.append((g, v, p))
+
+    # if sync_mode == 'ASP':
+    #   vars_concat = tf.concat(variance_list, 0)
+    #   flattened_gradients = tf.reshape(vars_concat, [-1])
+    #   sum_grad_component = tf.reduce_sum(grad_component_variance)
+    #   gradient_global_norm = tf.norm(flattened_gradients, ord=2)
+    #   B_simple = tf.math.divide(sum_grad_component, gradient_global_norm)
+    #   b_simple_assign = tf.assign(self._b_simple, B_simple, name='b_simple_assign')
 
     converted_grads_and_vars = tuple(converted_grads_and_vars)
     var_list = [v for g, v, _ in converted_grads_and_vars if g is not None]
@@ -604,9 +878,9 @@ class Optimizer(
         # We colocate all ops created in _apply_dense or _apply_sparse
         # on the same device as the variable.
         # TODO(apassos): figure out how to get the variable name here.
-        if (context.executing_eagerly() or
-            isinstance(var, resource_variable_ops.BaseResourceVariable)
-            and not var._in_graph_mode):  # pylint: disable=protected-access
+        if context.executing_eagerly() or isinstance(
+            var,
+            resource_variable_ops.ResourceVariable) and not var._in_graph_mode:  # pylint: disable=protected-access
           scope_name = ""
         else:
           scope_name = var.op.name
@@ -617,8 +891,7 @@ class Optimizer(
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            if isinstance(
-                global_step, resource_variable_ops.BaseResourceVariable):
+            if isinstance(global_step, resource_variable_ops.ResourceVariable):
               # TODO(apassos): the implicit read in assign_add is slow; consider
               # making it less so.
               apply_updates = resource_variable_ops.assign_add_variable_op(
